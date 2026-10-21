@@ -2,12 +2,18 @@
 
 Fields: `Prompt`, `Answer`, `Back`.
 
+## Build
+
+    npm install
+    npm run build
+
+This writes everything Anki needs to `dist/`. Node.js 22 or later is required.
+
 ## Install
 
-1. Copy these three files into your profile's `collection.media` folder:
-   `src/_code-card.js`, and the two library files it loads, `_markdown-it.min.js` and `_diff.min.js` (see the table at the end; they are not kept in this repository).
+1. Copy the files in `dist/media/` into your profile's `collection.media` folder.
 2. Note type > Fields: add a field named `Back`.
-3. Note type > Cards: paste `src/templates/front.html` into Front Template, `src/templates/back.html` into Back Template, `src/style.css` into Styling.
+3. Note type > Cards: paste `dist/front.html` into Front Template, `dist/back.html` into Back Template, `dist/style.css` into Styling.
 
 If you do not want the `Back` field, delete the `{{#Back}}...{{/Back}}` line from the Back Template instead of step 2.
 
@@ -49,11 +55,11 @@ The answer side shows the block again with what you typed compared against the h
 
 ## Changing things
 
-- Options are at the top of `src/_code-card.js` (`CONFIG`): Tab width, labels, the `type` word, the underline selector. Restart Anki after editing the file.
-- Colours are in the Styling.
-- The two libraries are unmodified files from npm. To update one, replace the file under the same name.
+- Options are at the top of `src/_code-card.js` (`CONFIG`): Tab width, labels, the `type` word, the underline selector. Rebuild, copy the file into `collection.media` again and restart Anki.
+- Colours are in `src/style.css`.
+- The two libraries come from npm, pinned in `package-lock.json`. The build copies each one's own browser file out of `node_modules` unchanged. To update them, run `npm update`, rebuild and copy `dist/media/` again.
 
-| File | Library | Version | Source file in the npm package |
-|---|---|---|---|
-| `_markdown-it.min.js` | markdown-it | 15.0.3 | `markdown-it/dist/browser/markdown-it.umd.min.js` |
-| `_diff.min.js` | jsdiff | 9.0.0 | `diff/dist/diff.min.js` |
+| File in `dist/media/` | npm package | Source file in the package |
+|---|---|---|
+| `_markdown-it.min.js` | `markdown-it` | `dist/browser/markdown-it.umd.min.js` |
+| `_diff.min.js` | `diff` (jsdiff) | `dist/diff.min.js` |
