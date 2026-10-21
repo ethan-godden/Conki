@@ -55,7 +55,7 @@ The answer side shows the block again with what you typed compared against the h
 
 ## Changing things
 
-- Options are at the top of `src/_code-card.js` (`CONFIG`): Tab width, labels, the `type` word, the underline selector. Rebuild, copy the file into `collection.media` again and restart Anki.
+- Options are in `src/js/config.js`: Tab width, labels, the `type` word, the underline selector. Rebuild, copy `dist/media/_code-card.js` into `collection.media` again and restart Anki.
 - Colours are in `src/style.css`.
 - The two libraries come from npm, pinned in `package-lock.json`. The build copies each one's own browser file out of `node_modules` unchanged. To update them, run `npm update`, rebuild and copy `dist/media/` again.
 
