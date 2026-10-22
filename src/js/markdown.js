@@ -1,5 +1,6 @@
 /* Markdown fields: text -> markdown-it tokens -> HTML, with code blocks handed
  * back to the caller to build. */
+import markdownit from "markdown-it";
 import { CONFIG } from "./config.js";
 import { EMBED_TOKEN, fieldText } from "./field-text.js";
 import { makeRegion, maskRuns, typedBlock } from "./regions.js";
@@ -10,7 +11,7 @@ function getMd() {
   if (md) return md;
   // html:false  -> anything that looks like HTML in the text is shown literally
   // breaks:true -> a line break typed in Anki is a line break on the card
-  md = window.markdownit({ html: false, breaks: true, linkify: true, typographer: false });
+  md = markdownit({ html: false, breaks: true, linkify: true, typographer: false });
   md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });   // only real URLs, not "main.py"
 
   // Leave \( ... \) and \[ ... \] alone so Anki's MathJax still sees them.

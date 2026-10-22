@@ -11,7 +11,7 @@ This writes everything Anki needs to `dist/`. Node.js 22 or later is required.
 
 ## Install
 
-1. Copy the files in `dist/media/` into your profile's `collection.media` folder.
+1. Copy `dist/media/_code-card.js` into your profile's `collection.media` folder.
 2. Note type > Fields: add a field named `Back`.
 3. Note type > Cards: paste `dist/front.html` into Front Template, `dist/back.html` into Back Template, `dist/style.css` into Styling.
 
@@ -57,9 +57,5 @@ The answer side shows the block again with what you typed compared against the h
 
 - Options are in `src/js/config.js`: Tab width, labels, the `type` word, the underline selector. Rebuild, copy `dist/media/_code-card.js` into `collection.media` again and restart Anki.
 - Colours are in `src/style.css`.
-- The two libraries come from npm, pinned in `package-lock.json`. The build copies each one's own browser file out of `node_modules` unchanged. To update them, run `npm update`, rebuild and copy `dist/media/` again.
-
-| File in `dist/media/` | npm package | Source file in the package |
-|---|---|---|
-| `_markdown-it.min.js` | `markdown-it` | `dist/browser/markdown-it.umd.min.js` |
-| `_diff.min.js` | `diff` (jsdiff) | `dist/diff.min.js` |
+- The two libraries, markdown-it and jsdiff, come from npm, pinned in `package-lock.json`, and are compiled into `_code-card.js`. Their licences are appended to that file. To update them, run `npm update`, rebuild and copy the script again.
+- `_markdown-it.min.js` and `_diff.min.js` from earlier versions are no longer used and can be deleted from `collection.media`.

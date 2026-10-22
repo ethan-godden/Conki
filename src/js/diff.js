@@ -1,10 +1,10 @@
 /* Typed answer versus expected code. */
+import { diffChars, diffLines } from "diff";
 import { el } from "./dom.js";
 
 /* [{ k: 0 same | -1 only typed | 1 only expected, s: text }].
  * Lines are matched first, then characters inside the lines that differ. */
 export function diffParts(typed, expected) {
-  const Diff = window.Diff;
   const out = [];
   const push = (k, s) => {
     if (!s) return;
@@ -14,7 +14,7 @@ export function diffParts(typed, expected) {
   };
   const kind = (change) => (change.added ? 1 : change.removed ? -1 : 0);
 
-  const lines = Diff.diffLines(typed, expected) ||
+  const lines = diffLines(typed, expected) ||
     [{ removed: true, value: typed }, { added: true, value: expected }];
   for (let i = 0; i < lines.length; i++) {
     const a = lines[i];
@@ -22,7 +22,7 @@ export function diffParts(typed, expected) {
     if (b && kind(a) && kind(b) === -kind(a)) {
       const mine = a.removed ? a.value : b.value;
       const want = a.removed ? b.value : a.value;
-      const chars = Diff.diffChars(mine, want, { timeout: 2000 });
+      const chars = diffChars(mine, want, { timeout: 2000 });
       if (chars) {
         for (const c of chars) push(kind(c), c.value);
       } else {
