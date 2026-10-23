@@ -35,14 +35,30 @@ const result = await build({
 });
 await writeFile(script, escapeNonAscii(await readFile(script, "utf8")) + (await thirdPartyNotices(result.metafile)));
 
-await copyFile(join(src, "templates/front.html"), join(dist, "front.html"));
-await copyFile(join(src, "templates/back.html"), join(dist, "back.html"));
+await writeFile(join(dist, "front.html"), await template("front.html"));
+await writeFile(join(dist, "back.html"), await template("back.html"));
 await copyFile(join(src, "style.css"), join(dist, "style.css"));
 
 for (const entry of await readdir(dist, { recursive: true, withFileTypes: true })) {
   if (!entry.isFile()) continue;
   const file = join(entry.parentPath, entry.name);
   console.log(`${relative(root, file)}  ${((await stat(file)).size / 1024).toFixed(1)} kB`);
+}
+
+/* A card template with every <script data-inline src="file"></script> replaced
+ * by an inline script holding that file's contents. Anki templates cannot
+ * share a file, so the loader both templates need is kept once in
+ * src/templates and copied into each here. */
+async function template(name) {
+  const tag = /<script data-inline src="([^"]+)"><\/script>/g;
+  const html = await readFile(join(src, "templates", name), "utf8");
+  const scripts = new Map();
+  for (const [, file] of html.matchAll(tag)) {
+    const code = await readFile(join(src, "templates", file), "utf8");
+    if (/<\/script/i.test(code)) throw new Error(`${file} contains "</script", which would end the inline script early`);
+    scripts.set(file, code.replace(/^\/\*[\s\S]*?\*\/\n/, ""));   // drop the file's leading comment
+  }
+  return html.replace(tag, (match, file) => `<script>\n${scripts.get(file)}</script>`);
 }
 
 /* esbuild escapes non-ASCII characters in strings but leaves them in regular
