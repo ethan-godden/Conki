@@ -74,9 +74,10 @@ function wireInput(input, key, caret) {
     const bare = !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
     if (e.key === "Tab" && bare && multiLine) {
       e.preventDefault();
-      if (!document.execCommand("insertText", false, CONFIG.indent)) {
-        input.setRangeText(CONFIG.indent, input.selectionStart, input.selectionEnd, "end");
-      }
+      // execCommand keeps the box's undo history; setRangeText is the fallback where it is missing or refuses
+      const inserted = typeof document.execCommand === "function" &&
+        document.execCommand("insertText", false, CONFIG.indent);
+      if (!inserted) input.setRangeText(CONFIG.indent, input.selectionStart, input.selectionEnd, "end");
       store();
       fit();
     } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey || !multiLine)) {
