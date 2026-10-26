@@ -5,7 +5,9 @@
   "description": "Anki note type for code cards: Markdown fields, read-only code blocks, and a typed answer that is diffed against the expected code.",
   "type": "module",
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "pretest": "npm run build",
+    "test": "node --test \"test/*.test.js\""
   },
   "dependencies": {
     "diff": "^9.0.0",
@@ -15,6 +17,7 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "jsdom": "^31.0.0"
   }
 }
