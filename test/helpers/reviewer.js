@@ -5,6 +5,7 @@
  * the page asks for it. One Reviewer is one Anki session: the page stays
  * between cards and between a card's two sides, as it does in Anki desktop. */
 import { readFile } from "node:fs/promises";
+import { EditorView } from "@codemirror/view";
 import { JSDOM, requestInterceptor, VirtualConsole } from "jsdom";
 
 const dist = new URL("../../dist/", import.meta.url);
@@ -33,6 +34,12 @@ export function fill(template, fields) {
     .replace(/\{\{([^}#^/]+)\}\}/g, (match, name) => value(name));
 }
 
+/* jsdom does no layout and has no Range geometry, which CodeMirror measures text with. */
+function withoutLayout(window) {
+  window.Range.prototype.getClientRects = () => Object.assign([], { item: () => null });
+  window.Range.prototype.getBoundingClientRect = () => new window.DOMRect(0, 0, 0, 0);
+}
+
 export class Reviewer {
   /* scriptAvailable: false behaves as if _code-card.js were not in collection.media. */
   constructor({ scriptAvailable = true } = {}) {
@@ -42,6 +49,8 @@ export class Reviewer {
     const dom = new JSDOM('<!doctype html><html><head></head><body class="card"><div id="qa"></div></body></html>', {
       url: "http://127.0.0.1:40000/",
       runScripts: "dangerously",
+      pretendToBeVisual: true,                // requestAnimationFrame, which CodeMirror measures in
+      beforeParse: withoutLayout,
       virtualConsole: new VirtualConsole(),   // failed loads are asserted on, not printed
       resources: {
         interceptors: [requestInterceptor((request) => {
@@ -79,16 +88,22 @@ export class Reviewer {
   question(fields) { return this.show(built.front, fields); }
   answer(fields) { return this.show(built.back, fields); }
 
+  /* The element that is typed into (CodeMirror's content element). */
   get input() { return this.document.getElementById("code-input"); }
 
-  /* Types text at the caret. */
+  /* Its CodeMirror view: the real one, made by the built script. */
+  get view() { return EditorView.findFromDOM(this.input.closest(".cm-editor")); }
+
+  /* What is in it. */
+  get text() { return this.view.state.doc.toString(); }
+
+  /* Types text at the cursor. */
   type(text) {
-    const input = this.input;
-    input.setRangeText(text, input.selectionStart, input.selectionEnd, "end");
-    input.dispatchEvent(new this.window.Event("input", { bubbles: true }));
+    const view = this.view;
+    view.dispatch(view.state.replaceSelection(text), { userEvent: "input.type" });
   }
 
-  /* Presses a key in the input; returns the event so preventDefault can be checked. */
+  /* Presses a key in the editor; returns the event so preventDefault can be checked. */
   press(key, modifiers = {}) {
     const event = new this.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...modifiers });
     this.input.dispatchEvent(event);
@@ -98,16 +113,17 @@ export class Reviewer {
   close() { this.window.close(); }
 }
 
-/* What a rendered card shows, as plain data. */
+/* What a rendered card shows, as plain data. The text of a mark that covers
+ * several lines comes back as one entry per line. */
 export function shown(card) {
   const texts = (selector) => [...card.querySelectorAll(selector)].map((node) => node.textContent);
   return {
     labels: texts(".code-label"),
-    blocks: texts("pre.code"),
+    blocks: [...card.querySelectorAll(".cm-editor")].map((editor) => EditorView.findFromDOM(editor).state.doc.toString()),
     good: texts(".c-good"),
     bad: texts(".c-bad"),
     missed: texts(".c-missed"),
-    regions: [...card.querySelectorAll(".cc-region")].map((node) => `${node.className}: ${node.textContent}`),
+    answer: texts(".c-answer"),
     error: (card.querySelector(".cc-error") || {}).textContent ?? null,
   };
 }

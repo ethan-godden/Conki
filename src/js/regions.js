@@ -1,5 +1,20 @@
-/* Which part of a code block is typed, and how it is presented. */
-import { dedent, normalizeCode } from "./code.js";
+/* Which part of a code block is typed, and what the editor starts with.
+ *
+ * The typed part of a block is described by a region:
+ *   kind      "all": the whole block is typed
+ *             "lines": whole lines inside the block
+ *             "inline": part of one line
+ *   expected  the whole block as it should end up, normalised for comparing
+ *   doc       what the editor starts with: the block less the typed part, or
+ *             (kind "all") nothing, or the starter code
+ *   edit      [from, to) of doc that can be edited: the empty spot where the
+ *             typed part goes, or all of doc
+ *   caret     where the cursor starts in doc
+ *   gap       [start, end) of the block's code that is typed (whole lines for
+ *             kind "lines", indentation included)
+ *   holes     only with starter code: the parts of the block left out of doc
+ */
+import { normalizeCode } from "./code.js";
 import { fieldText } from "./field-text.js";
 
 /* The runs of "1" in a mask, as [start, end) pairs. */
@@ -17,12 +32,39 @@ export function maskRuns(mask) {
   return runs;
 }
 
-/* Turn a raw range into the typeable region of a block.
- *   all    : the whole block is typed            -> a text box replaces it
- *   lines  : whole lines inside the block        -> multi-line gap
- *   inline : part of one line                    -> single-line gap
- * A part that spans several lines is widened to whole lines. For "lines" the
- * shared indentation is not typed: the gap is shifted right instead.
+/* The leading whitespace that every non-blank line of `text` starts with. */
+function sharedIndent(text) {
+  let shared = null;
+  for (const line of text.split("\n")) {
+    if (!line.trim()) continue;
+    const indent = /^[ \t]*/.exec(line)[0];
+    if (shared === null) {
+      shared = indent;
+    } else {
+      let i = 0;
+      while (i < shared.length && shared.charAt(i) === indent.charAt(i)) i++;
+      shared = shared.slice(0, i);
+    }
+  }
+  return shared || "";
+}
+
+/* The whole block is typed, from an empty editor. */
+export function wholeRegion(code) {
+  return { kind: "all", expected: normalizeCode(code), doc: "", edit: [0, 0], caret: 0, gap: [0, code.length] };
+}
+
+/* The part [start, end) is typed, from `at` on: what comes before `at` stays in the code. */
+function gapRegion(kind, code, start, end, at = start) {
+  return { kind, expected: normalizeCode(code), doc: code.slice(0, at) + code.slice(end),
+           edit: [at, at], caret: at, gap: [start, end] };
+}
+
+/* Turn a raw range of `code` into the typed part of the block.
+ * A part of one line is typed in place. A part that spans several lines is
+ * widened to whole lines; the indentation they share is left in the code, so
+ * the editor starts where the first line's text would. If that leaves nothing
+ * else in the block, the whole block is typed.
  * Returns null when the range holds nothing but whitespace. */
 export function makeRegion(code, start, end) {
   while (start < end && /\s/.test(code.charAt(start))) start++;
@@ -34,23 +76,14 @@ export function makeRegion(code, start, end) {
   const wholeLines = !/\S/.test(code.slice(lineStart, start)) && !/\S/.test(code.slice(end, lineEnd));
   const multiLine = code.slice(start, end).indexOf("\n") >= 0;
 
-  if (!wholeLines && !multiLine) {
-    return { kind: "inline", start, end, cut: end, indent: 0,
-             expected: normalizeCode(code.slice(start, end)) };
-  }
-  if (!/\S/.test(code.slice(0, lineStart)) && !/\S/.test(code.slice(lineEnd))) {
-    return { kind: "all", start: 0, end: code.length, cut: code.length, indent: 0,
-             expected: normalizeCode(code) };
-  }
-  const d = dedent(normalizeCode(code.slice(lineStart, lineEnd)));
-  return { kind: "lines", start: lineStart, end: lineEnd,
-           cut: lineEnd + (code.charAt(lineEnd) === "\n" ? 1 : 0),
-           indent: d.indent, expected: d.text };
+  if (!wholeLines && !multiLine) return gapRegion("inline", code, start, end);
+  if (!/\S/.test(code.slice(0, lineStart)) && !/\S/.test(code.slice(lineEnd))) return wholeRegion(code);
+  return gapRegion("lines", code, lineStart, lineEnd, lineStart + sharedIndent(code.slice(lineStart, lineEnd)).length);
 }
 
-/* A block flagged `type`: one text box for the whole block. With nothing
- * underlined the box starts empty. With parts underlined, only those parts
- * are left out: the rest is put in the box as starter code, which can be
+/* A block flagged `type`: one editor for the whole block. With nothing
+ * underlined it starts empty. With parts underlined, only those parts are
+ * left out: the rest is put in the editor as starter code, which can be
  * edited like anything else typed there. */
 export function typedBlock(code, runs) {
   const region = makeRegion(code, 0, code.length);
@@ -71,7 +104,9 @@ export function typedBlock(code, runs) {
   }
   starter += code.slice(pos);
   if (holes.length && /\S/.test(starter)) {
-    region.starter = starter;
+    region.doc = starter;
+    region.edit = [0, starter.length];
+    region.caret = holes[0][0];
     region.holes = holes;
   }
   return region;

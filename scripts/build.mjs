@@ -69,12 +69,15 @@ function escapeNonAscii(code) {
 }
 
 /* The licence of every npm package that ended up in the bundle, as a comment
- * to append to it, so the notices travel with the file. */
+ * to append to it, so the notices travel with the file. A package that was
+ * read but whose code was all dropped (tree shaking) is not in the file. */
 async function thirdPartyNotices(metafile) {
   const dirs = new Set();
-  for (const input of Object.keys(metafile.inputs)) {
-    const match = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(input);
-    if (match) dirs.add(match[1]);
+  for (const output of Object.values(metafile.outputs)) {
+    for (const [input, { bytesInOutput }] of Object.entries(output.inputs)) {
+      const match = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)\//.exec(input);
+      if (match && bytesInOutput > 0) dirs.add(match[1]);
+    }
   }
   const notices = [];
   for (const dir of dirs) {

@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 import { built } from "./helpers/reviewer.js";
 
-const require = createRequire(import.meta.url);
 const root = new URL("../", import.meta.url);
 const pkg = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
 const NON_ASCII = /[^\x00-\x7F]/;
@@ -25,11 +23,15 @@ test("the script says what it is and carries no source-map reference", () => {
   assert.equal(/sourceMappingURL/.test(built.script), false);
 });
 
-test("the licences of the bundled libraries are in the script", () => {
-  for (const name of ["markdown-it", "diff"]) {
-    const { version } = require(`${name}/package.json`);
+test("the licences of the bundled libraries are in the script", async () => {
+  for (const name of ["markdown-it", "@codemirror/view", "@codemirror/state", "@codemirror/commands", "@codemirror/merge"]) {
+    const { version } = JSON.parse(await readFile(new URL(`node_modules/${name}/package.json`, root), "utf8"));
     assert.ok(built.script.includes(`----- ${name} ${version} (`), `licence notice for ${name} ${version}`);
   }
+});
+
+test("a library the build read but dropped completely has no notice", () => {
+  assert.equal(built.script.includes("----- @codemirror/streamparser "), false);
 });
 
 test("running the script defines CodeCard and nothing else it did not have to", () => {
@@ -69,7 +71,7 @@ test("the templates use the fields the note type has", () => {
 test("sources contain only ASCII: no invisible or look-alike characters", async () => {
   for (const dir of ["src/", "scripts/", "test/"]) {
     for (const entry of await readdir(new URL(dir, root), { recursive: true, withFileTypes: true })) {
-      if (!entry.isFile()) continue;
+      if (!entry.isFile() || entry.name.startsWith(".")) continue;   // not .DS_Store and the like
       const file = `${entry.parentPath}/${entry.name}`;
       const line = (await readFile(file, "utf8")).split("\n").findIndex((text) => NON_ASCII.test(text));
       assert.equal(line, -1, `${file}:${line + 1} has a non-ASCII character; write it as an escape such as \\u00A0`);

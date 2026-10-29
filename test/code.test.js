@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { dedent, normalizeCode } from "../src/js/code.js";
+import { normalizeCode } from "../src/js/code.js";
 
 test("normalizeCode ignores what should not count as a difference", () => {
   assert.equal(normalizeCode("a\r\nb\rc"), "a\nb\nc", "line endings");
@@ -16,10 +16,4 @@ test("normalizeCode keeps what is part of the code", () => {
   assert.equal(normalizeCode("  indented first line"), "  indented first line");
   assert.equal(normalizeCode("a  =  1"), "a  =  1");
   assert.equal(normalizeCode('print("<b>&amp;</b>")'), 'print("<b>&amp;</b>")');
-});
-
-test("dedent removes the indentation every non-blank line shares", () => {
-  assert.deepEqual(dedent("    if x:\n        y()\n\n    z()"), { indent: 4, text: "if x:\n    y()\n\nz()" });
-  assert.deepEqual(dedent("a\n  b"), { indent: 0, text: "a\n  b" });
-  assert.deepEqual(dedent(""), { indent: 0, text: "" });
 });

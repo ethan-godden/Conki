@@ -14,8 +14,8 @@ function html(source) {
 function blocks(source, allowType = true) {
   return renderMarkdown(field(source), allowType).blocks.map(({ code, lang, region }) => {
     const block = { code, lang, kind: region ? region.kind : null };
-    if (region && region.kind !== "all") block.expected = region.expected;
-    if (region && region.starter != null) block.starter = region.starter;
+    if (region && region.kind !== "all") block.typed = code.slice(...region.gap);   // the part that is typed
+    if (region && region.holes) block.starter = region.doc;
     return block;
   });
 }
@@ -98,12 +98,12 @@ test("```lang type makes the whole block typed", () => {
 
 test("underlining part of a line makes an inline gap", () => {
   assert.deepEqual(blocks(fence("c", 'printf(<u>"%d"</u>, 42);')),
-    [{ code: 'printf("%d", 42);', lang: "c", kind: "inline", expected: '"%d"' }]);
+    [{ code: 'printf("%d", 42);', lang: "c", kind: "inline", typed: '"%d"' }]);
 });
 
 test("underlining whole lines makes a lines gap", () => {
   assert.deepEqual(blocks(fence("py", "def f():", "<u>&nbsp; &nbsp; return 1</u>", "f()")),
-    [{ code: "def f():\n    return 1\nf()", lang: "py", kind: "lines", expected: "return 1" }]);
+    [{ code: "def f():\n    return 1\nf()", lang: "py", kind: "lines", typed: "    return 1" }]);
 });
 
 test("underlining everything makes the whole block typed", () => {
@@ -112,7 +112,7 @@ test("underlining everything makes the whole block typed", () => {
 
 test("several underlined runs without the flag make one gap from first to last", () => {
   assert.deepEqual(blocks(fence("py", "<u>a</u> = <u>b</u> + c")),
-    [{ code: "a = b + c", lang: "py", kind: "inline", expected: "a = b" }]);
+    [{ code: "a = b + c", lang: "py", kind: "inline", typed: "a = b" }]);
 });
 
 test("```lang type with underlined parts gives starter code", () => {
@@ -146,18 +146,18 @@ test("a block nested in a list is typeable only through the flag", () => {
 
 test("offsets stay exact for indented, unclosed and tilde fences", () => {
   assert.deepEqual(blocks("&nbsp;&nbsp;```py<br>&nbsp;&nbsp;if a:<br>&nbsp;&nbsp;&nbsp; &nbsp; <u>b()</u><br>&nbsp;&nbsp;```"),
-    [{ code: "if a:\n    b()", lang: "py", kind: "lines", expected: "b()" }]);
-  assert.deepEqual(blocks("```py<br>x = 1<br>y = <u>2</u>"), [{ code: "x = 1\ny = 2", lang: "py", kind: "inline", expected: "2" }]);
-  assert.deepEqual(blocks("~~~py<br><u>x = 1</u><br>y = 2<br>~~~"), [{ code: "x = 1\ny = 2", lang: "py", kind: "lines", expected: "x = 1" }]);
+    [{ code: "if a:\n    b()", lang: "py", kind: "lines", typed: "    b()" }]);
+  assert.deepEqual(blocks("```py<br>x = 1<br>y = <u>2</u>"), [{ code: "x = 1\ny = 2", lang: "py", kind: "inline", typed: "2" }]);
+  assert.deepEqual(blocks("~~~py<br><u>x = 1</u><br>y = 2<br>~~~"), [{ code: "x = 1\ny = 2", lang: "py", kind: "lines", typed: "x = 1" }]);
 });
 
 test("fields stored as one <div> per line or inside <pre> work the same", () => {
-  assert.deepEqual(blocks("<div>```py</div><div>x = <u>1</u></div><div>```</div>"), [{ code: "x = 1", lang: "py", kind: "inline", expected: "1" }]);
-  assert.deepEqual(blocks("<pre>```py\nx = <u>1</u>\n```</pre>"), [{ code: "x = 1", lang: "py", kind: "inline", expected: "1" }]);
+  assert.deepEqual(blocks("<div>```py</div><div>x = <u>1</u></div><div>```</div>"), [{ code: "x = 1", lang: "py", kind: "inline", typed: "1" }]);
+  assert.deepEqual(blocks("<pre>```py\nx = <u>1</u>\n```</pre>"), [{ code: "x = 1", lang: "py", kind: "inline", typed: "1" }]);
 });
 
 test("tabs in code are kept in the block and compared as four spaces", () => {
-  assert.deepEqual(blocks(fence("c", "\tif (a)", "\t\t<u>b();</u>")), [{ code: "\tif (a)\n\t\tb();", lang: "c", kind: "lines", expected: "b();" }]);
+  assert.deepEqual(blocks(fence("c", "\tif (a)", "\t\t<u>b();</u>")), [{ code: "\tif (a)\n\t\tb();", lang: "c", kind: "lines", typed: "\t\tb();" }]);
 });
 
 test("an image inside a code block is dropped from the code", () => {
@@ -173,18 +173,18 @@ test("the key identifies the field's content", () => {
 
 test("HTML stored by Anki's editor: a typed line underlined", () => {
   assert.deepEqual(blocks(FROM_ANKI_EDITOR.lineUnderlined),
-    [{ code: "def f(x):\n    if x < 1 && x > -1:\n        return 1", lang: "python", kind: "lines", expected: "return 1" }]);
+    [{ code: "def f(x):\n    if x < 1 && x > -1:\n        return 1", lang: "python", kind: "lines", typed: "        return 1" }]);
 });
 
 test("HTML stored by Anki's editor: one character underlined", () => {
-  assert.deepEqual(blocks(FROM_ANKI_EDITOR.characterUnderlined), [{ code: "int x = 1;", lang: "c", kind: "inline", expected: "1" }]);
+  assert.deepEqual(blocks(FROM_ANKI_EDITOR.characterUnderlined), [{ code: "int x = 1;", lang: "c", kind: "inline", typed: "1" }]);
 });
 
 test("HTML stored by Anki's editor: two lines underlined", () => {
-  assert.deepEqual(blocks(FROM_ANKI_EDITOR.twoLinesUnderlined), [{ code: "a = 1\nb = 2\nc = 3", lang: "py", kind: "lines", expected: "b = 2\nc = 3" }]);
+  assert.deepEqual(blocks(FROM_ANKI_EDITOR.twoLinesUnderlined), [{ code: "a = 1\nb = 2\nc = 3", lang: "py", kind: "lines", typed: "b = 2\nc = 3" }]);
 });
 
 test("HTML stored by Anki's editor: pasted snippet with a line underlined", () => {
   assert.deepEqual(blocks(FROM_ANKI_EDITOR.pastedThenUnderlined),
-    [{ code: "function f(a, b) {\n    return a < b && b > 0;\n}", lang: "js", kind: "lines", expected: "return a < b && b > 0;" }]);
+    [{ code: "function f(a, b) {\n    return a < b && b > 0;\n}", lang: "js", kind: "lines", typed: "    return a < b && b > 0;" }]);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { field } from "./helpers/dom.js";
-import { answerField, makeRegion, maskRuns, typedBlock } from "../src/js/regions.js";
+import { answerField, makeRegion, maskRuns, typedBlock, wholeRegion } from "../src/js/regions.js";
 
 /* makeRegion() for the part of `code` between the two marks "[" and "]". */
 function regionOf(marked) {
@@ -11,6 +11,9 @@ function regionOf(marked) {
   return { code, region: makeRegion(code, start, end) };
 }
 
+/* The part of the code that is typed. */
+const typed = ({ code, region }) => code.slice(...region.gap);
+
 test("maskRuns finds each run of marked characters", () => {
   assert.deepEqual(maskRuns("0011010"), [[2, 4], [5, 6]]);
   assert.deepEqual(maskRuns("111"), [[0, 3]]);
@@ -18,43 +21,63 @@ test("maskRuns finds each run of marked characters", () => {
   assert.deepEqual(maskRuns(""), []);
 });
 
-test("part of one line is an inline region", () => {
-  const { region } = regionOf('printf([ "%d\\n" ], 42);');
-  assert.deepEqual(region, { kind: "inline", start: 8, end: 14, cut: 14, indent: 0, expected: '"%d\\n"' });
+test("part of one line is an inline gap: the editor holds the line without it", () => {
+  const found = regionOf('printf([ "%d\\n" ], 42);');
+  const { code, region } = found;
+  assert.equal(region.kind, "inline");
+  assert.equal(typed(found), '"%d\\n"');
+  assert.equal(region.doc, 'printf(  , 42);');
+  assert.deepEqual(region.edit, [8, 8], "an empty spot where the typed part goes");
+  assert.equal(region.caret, 8);
+  assert.equal(region.expected, code);
 });
 
-test("whole lines are a lines region; the shared indentation is not typed", () => {
-  const { code, region } = regionOf("def f():\n[    if x:\n        return 1\n]    return 2");
+test("whole lines are a lines gap; the indentation they share stays in the code", () => {
+  const found = regionOf("def f():\n[    if x:\n        return 1\n]    return 2");
+  const { code, region } = found;
   assert.equal(region.kind, "lines");
-  assert.equal(code.slice(region.start, region.end), "    if x:\n        return 1");
-  assert.equal(code.slice(region.end, region.cut), "\n", "the line break after the lines is cut with them");
-  assert.equal(region.indent, 4);
-  assert.equal(region.expected, "if x:\n    return 1");
+  assert.equal(typed(found), "    if x:\n        return 1", "whole lines, indentation included");
+  assert.equal(region.doc, "def f():\n    \n    return 2", "the editor starts after the indentation they share");
+  assert.deepEqual(region.edit, [13, 13]);
+  assert.equal(region.caret, 13);
+  assert.equal(region.expected, code);
+});
+
+test("the indentation lines share is measured in characters, tabs included", () => {
+  assert.equal(regionOf("if a:\n[\t\tb()]").region.doc, "if a:\n\t\t");
+  const found = regionOf("x:\n[    a\n  b]\ny");
+  assert.equal(typed(found), "    a\n  b");
+  assert.equal(found.region.doc, "x:\n  \ny", "only what all the lines share is left in the code");
 });
 
 test("a region that starts after the indentation still covers whole lines", () => {
-  const { code, region } = regionOf("if a:\n    [b()]\nc()");
-  assert.equal(region.kind, "lines");
-  assert.equal(code.slice(region.start, region.end), "    b()");
-  assert.equal(region.indent, 4);
+  const found = regionOf("if a:\n    [b()]\nc()");
+  assert.equal(found.region.kind, "lines");
+  assert.equal(typed(found), "    b()");
+  assert.equal(found.region.doc, "if a:\n    \nc()");
 });
 
-test("lines at the end of the block have no line break to cut", () => {
-  const { region } = regionOf("x = 1\n[y = 2]");
-  assert.equal(region.kind, "lines");
-  assert.equal(region.cut, region.end);
+test("lines at the end of the block have nothing after them", () => {
+  const found = regionOf("x = 1\n[y = 2]");
+  assert.equal(found.region.kind, "lines");
+  assert.equal(found.region.doc, "x = 1\n");
+  assert.deepEqual(found.region.gap, [6, 11]);
 });
 
 test("a part that spans lines is widened to whole lines", () => {
-  const { code, region } = regionOf("a = [1, [2,\n    3], 4]\nb = 2".replace("[1", "(1").replace("4]", "4)"));
-  assert.equal(region.kind, "lines");
-  assert.equal(code.slice(region.start, region.end), "a = (1, 2,\n    3, 4)");
+  const found = regionOf("a = [1, [2,\n    3], 4]\nb = 2".replace("[1", "(1").replace("4]", "4)"));
+  assert.equal(found.region.kind, "lines");
+  assert.equal(typed(found), "a = (1, 2,\n    3, 4)");
+  assert.equal(found.region.doc, "\nb = 2");
 });
 
 test("the whole block is an all region and is not dedented", () => {
-  const { region } = regionOf("[  x = 1\n  y = 2]");
+  const { code, region } = regionOf("[  x = 1\n  y = 2]");
   assert.equal(region.kind, "all");
   assert.equal(region.expected, "  x = 1\n  y = 2");
+  assert.equal(region.doc, "", "the editor starts empty");
+  assert.deepEqual(region.edit, [0, 0]);
+  assert.deepEqual(region.gap, [0, code.length]);
 });
 
 test("blank lines around the marked code do not stop it being the whole block", () => {
@@ -66,11 +89,20 @@ test("a range with only whitespace is no region", () => {
   assert.equal(makeRegion("", 0, 0), null);
 });
 
+test("expected is normalised: tabs, trailing spaces, blank lines at the ends", () => {
+  assert.equal(regionOf("\n[\tx = 1  ]\n").region.expected, "    x = 1");
+});
+
+test("wholeRegion is an empty editor for a whole block", () => {
+  assert.deepEqual(wholeRegion(""), { kind: "all", expected: "", doc: "", edit: [0, 0], caret: 0, gap: [0, 0] });
+});
+
 test("typedBlock without underlined parts: everything is typed, no starter code", () => {
   const region = typedBlock("x = 1\ny = 2", []);
   assert.equal(region.kind, "all");
   assert.equal(region.expected, "x = 1\ny = 2");
-  assert.equal(region.starter, undefined);
+  assert.equal(region.doc, "");
+  assert.equal(region.holes, undefined);
   assert.equal(typedBlock("  \n", []), null);
 });
 
@@ -79,25 +111,29 @@ test("typedBlock leaves the underlined parts out of the starter code", () => {
   const region = typedBlock(code, [[13, 21]]);
   assert.equal(region.kind, "all");
   assert.equal(region.expected, code);
-  assert.equal(region.starter, "def f():\n    ");
+  assert.equal(region.doc, "def f():\n    ", "the starter code");
+  assert.deepEqual(region.edit, [0, 13], "all of it can be edited");
+  assert.equal(region.caret, 13, "the cursor starts at the missing part");
   assert.deepEqual(region.holes, [[13, 21]]);
 });
 
 test("typedBlock trims whitespace off each underlined run", () => {
   const code = "def f():\n    return 1\n";
-  assert.equal(typedBlock(code, [[8, 22]]).starter, "def f():\n    \n", "run covered the line break and the indentation");
-  assert.equal(typedBlock(code, [[9, 13]]).starter, undefined, "run covered only whitespace");
+  assert.equal(typedBlock(code, [[8, 22]]).doc, "def f():\n    \n", "run covered the line break and the indentation");
+  assert.equal(typedBlock(code, [[9, 13]]).holes, undefined, "run covered only whitespace");
 });
 
 test("typedBlock supports several underlined parts", () => {
   const code = "function add(a, b) {\n  return a + b;\n}";
   const region = typedBlock(code, [[9, 12], [30, 35]]);
-  assert.equal(region.starter, "function (a, b) {\n  return ;\n}");
+  assert.equal(region.doc, "function (a, b) {\n  return ;\n}");
   assert.deepEqual(region.holes, [[9, 12], [30, 35]]);
+  assert.equal(region.caret, 9);
 });
 
 test("typedBlock with everything underlined is a plain typed block", () => {
-  assert.equal(typedBlock("x = 1", [[0, 5]]).starter, undefined);
+  assert.equal(typedBlock("x = 1", [[0, 5]]).holes, undefined);
+  assert.equal(typedBlock("x = 1", [[0, 5]]).doc, "");
 });
 
 test("answerField: nothing underlined, the whole field is typed", () => {
@@ -105,20 +141,20 @@ test("answerField: nothing underlined, the whole field is typed", () => {
   assert.equal(code, "def add(a, b):\n    return a + b");
   assert.equal(region.kind, "all");
   assert.equal(region.expected, code);
-  assert.equal(region.starter, undefined);
+  assert.equal(region.doc, "");
 });
 
 test("answerField: underlined part is left to type, the rest is starter code", () => {
   const { region } = answerField(field("x = 1<br><u>y = 2</u>"));
   assert.equal(region.expected, "x = 1\ny = 2");
-  assert.equal(region.starter, "x = 1\n");
+  assert.equal(region.doc, "x = 1\n");
   assert.deepEqual(region.holes, [[6, 11]]);
 });
 
 test("answerField ignores blank lines around the code", () => {
   const { code, region } = answerField(field("<br><div>def f(a, b):</div><div>&nbsp; &nbsp; return <u>a + b</u></div><br>"));
   assert.equal(code, "def f(a, b):\n    return a + b");
-  assert.equal(region.starter, "def f(a, b):\n    return ");
+  assert.equal(region.doc, "def f(a, b):\n    return ");
   assert.deepEqual(region.holes, [[24, 29]]);
 });
 
