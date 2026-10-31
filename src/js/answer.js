@@ -7,11 +7,14 @@ import { renderMarkdown } from "./markdown.js";
 import { answerField } from "./regions.js";
 import { loadTyped } from "./storage.js";
 
-function label(parent, text) {
-  const node = document.createElement("div");
-  node.className = "code-label";
-  node.textContent = text;
-  return parent.appendChild(node);
+/* A caption with a read-only block under it. Returns the caption. */
+function captioned(parent, text, code, lang, marks) {
+  const caption = document.createElement("div");
+  caption.className = "code-label";
+  caption.textContent = text;
+  parent.appendChild(caption);
+  readOnlyView(parent, code, lang, marks);
+  return caption;
 }
 
 /* Marks over the [from, to) ranges of `text` that differ, with a return sign
@@ -40,16 +43,13 @@ function showResult(parent, { code, lang, region }, raw) {
   if (untouched || typed === region.expected) {
     // What was left to type is tinted (for a block typed from scratch, only once it is Correct).
     const tint = untouched ? region.holes || (region.kind === "all" ? [] : [region.gap]) : [region.gap];
-    const first = label(parent, untouched ? labels.answer : labels.correct);
-    readOnlyView(parent, code, lang, tint.map(([from, to]) => mark(untouched ? "c-answer" : "c-good", from, to)));
-    return first;
+    return captioned(parent, untouched ? labels.answer : labels.correct, code, lang,
+      tint.map(([from, to]) => mark(untouched ? "c-answer" : "c-good", from, to)));
   }
 
   const changes = presentableDiff(typed, region.expected);
-  const first = label(parent, labels.typed);
-  readOnlyView(parent, typed, lang, changeMarks(typed, changes.map((c) => [c.fromA, c.toA]), "c-bad"));
-  label(parent, labels.expected);
-  readOnlyView(parent, region.expected, lang, changeMarks(region.expected, changes.map((c) => [c.fromB, c.toB]), "c-missed"));
+  const first = captioned(parent, labels.typed, typed, lang, changeMarks(typed, changes.map((c) => [c.fromA, c.toA]), "c-bad"));
+  captioned(parent, labels.expected, region.expected, lang, changeMarks(region.expected, changes.map((c) => [c.fromB, c.toB]), "c-missed"));
   return first;
 }
 
@@ -71,8 +71,7 @@ export function renderBack(root) {
     if (field.region && !result) {
       showResult(answer, field, typed);
     } else if (field.region) {
-      label(answer, CONFIG.labels.answer);
-      readOnlyView(answer, field.region.expected, "");
+      captioned(answer, CONFIG.labels.answer, field.region.expected, "");
     }
   }
 

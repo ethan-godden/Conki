@@ -1,15 +1,13 @@
 /* Which part of a code block is typed, and what the editor starts with.
  *
  * The typed part of a block is described by a region:
- *   kind      "all": the whole block is typed
- *             "lines": whole lines inside the block
- *             "inline": part of one line
+ *   kind      "all": the whole block is typed, in an editor that is all editable
+ *             "lines": whole lines inside the block, a gap in read-only code
+ *             "inline": part of one line, a gap in read-only code
  *   expected  the whole block as it should end up, normalised for comparing
  *   doc       what the editor starts with: the block less the typed part, or
  *             (kind "all") nothing, or the starter code
- *   edit      [from, to) of doc that can be edited: the empty spot where the
- *             typed part goes, or all of doc
- *   caret     where the cursor starts in doc
+ *   caret     where the cursor starts in doc; for a gap, also where it is
  *   gap       [start, end) of the block's code that is typed (whole lines for
  *             kind "lines", indentation included)
  *   holes     only with starter code: the parts of the block left out of doc
@@ -20,44 +18,37 @@ import { fieldText } from "./field-text.js";
 /* The runs of "1" in a mask, as [start, end) pairs. */
 export function maskRuns(mask) {
   const runs = [];
-  let open = -1;
-  for (let k = 0; k <= mask.length; k++) {
-    const on = k < mask.length && mask.charAt(k) === "1";
-    if (on && open < 0) open = k;
-    if (!on && open >= 0) {
-      runs.push([open, k]);
-      open = -1;
-    }
-  }
+  const run = /1+/g;
+  let match;
+  while ((match = run.exec(mask))) runs.push([match.index, match.index + match[0].length]);
   return runs;
+}
+
+/* [start, end) of `code` less any whitespace at either end; null if nothing else is in it. */
+function trimmed(code, start, end) {
+  while (start < end && /\s/.test(code.charAt(start))) start++;
+  while (end > start && /\s/.test(code.charAt(end - 1))) end--;
+  return start < end ? [start, end] : null;
 }
 
 /* The leading whitespace that every non-blank line of `text` starts with. */
 function sharedIndent(text) {
-  let shared = null;
-  for (const line of text.split("\n")) {
-    if (!line.trim()) continue;
-    const indent = /^[ \t]*/.exec(line)[0];
-    if (shared === null) {
-      shared = indent;
-    } else {
-      let i = 0;
-      while (i < shared.length && shared.charAt(i) === indent.charAt(i)) i++;
-      shared = shared.slice(0, i);
-    }
-  }
-  return shared || "";
+  const indents = text.split("\n").filter((line) => line.trim()).map((line) => /^[ \t]*/.exec(line)[0]);
+  return indents.reduce((shared, indent) => {
+    let i = 0;
+    while (i < shared.length && shared.charAt(i) === indent.charAt(i)) i++;
+    return shared.slice(0, i);
+  }, indents[0] || "");
 }
 
 /* The whole block is typed, from an empty editor. */
 export function wholeRegion(code) {
-  return { kind: "all", expected: normalizeCode(code), doc: "", edit: [0, 0], caret: 0, gap: [0, code.length] };
+  return { kind: "all", expected: normalizeCode(code), doc: "", caret: 0, gap: [0, code.length] };
 }
 
 /* The part [start, end) is typed, from `at` on: what comes before `at` stays in the code. */
 function gapRegion(kind, code, start, end, at = start) {
-  return { kind, expected: normalizeCode(code), doc: code.slice(0, at) + code.slice(end),
-           edit: [at, at], caret: at, gap: [start, end] };
+  return { kind, expected: normalizeCode(code), doc: code.slice(0, at) + code.slice(end), caret: at, gap: [start, end] };
 }
 
 /* Turn a raw range of `code` into the typed part of the block.
@@ -66,10 +57,10 @@ function gapRegion(kind, code, start, end, at = start) {
  * the editor starts where the first line's text would. If that leaves nothing
  * else in the block, the whole block is typed.
  * Returns null when the range holds nothing but whitespace. */
-export function makeRegion(code, start, end) {
-  while (start < end && /\s/.test(code.charAt(start))) start++;
-  while (end > start && /\s/.test(code.charAt(end - 1))) end--;
-  if (start >= end) return null;
+export function makeRegion(code, from, to) {
+  const range = trimmed(code, from, to);
+  if (!range) return null;
+  const [start, end] = range;
   const lineStart = code.lastIndexOf("\n", start - 1) + 1;
   let lineEnd = code.indexOf("\n", end);
   if (lineEnd < 0) lineEnd = code.length;
@@ -88,24 +79,11 @@ export function makeRegion(code, start, end) {
 export function typedBlock(code, runs) {
   const region = makeRegion(code, 0, code.length);
   if (!region) return null;
-  const holes = [];
-  for (const run of runs) {
-    let start = run[0];
-    let end = Math.min(run[1], code.length);
-    while (start < end && /\s/.test(code.charAt(start))) start++;
-    while (end > start && /\s/.test(code.charAt(end - 1))) end--;
-    if (start < end) holes.push([start, end]);
-  }
-  let starter = "";
-  let pos = 0;
-  for (const hole of holes) {
-    starter += code.slice(pos, hole[0]);
-    pos = hole[1];
-  }
-  starter += code.slice(pos);
+  const holes = runs.map(([start, end]) => trimmed(code, start, Math.min(end, code.length))).filter(Boolean);
+  // cut from the last hole to the first, so the offsets of the others stay right
+  const starter = holes.reduceRight((rest, [start, end]) => rest.slice(0, start) + rest.slice(end), code);
   if (holes.length && /\S/.test(starter)) {
     region.doc = starter;
-    region.edit = [0, starter.length];
     region.caret = holes[0][0];
     region.holes = holes;
   }

@@ -221,7 +221,8 @@ session("underlined lines: a wrong answer shows the block as typed and the block
 });
 
 session("underlined lines: nothing typed shows the answer with the gap tinted", async (anki) => {
-  const view = shown(await (async () => { await anki.question(FIB); return anki.answer(FIB); })());
+  await anki.question(FIB);
+  const view = shown(await anki.answer(FIB));
   assert.deepEqual(view.labels, ["Answer"]);
   assert.deepEqual(view.blocks, [FIB_CODE]);
   assert.deepEqual(view.answer, FIB_LINES.split("\n"));

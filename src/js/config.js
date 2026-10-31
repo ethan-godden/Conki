@@ -2,7 +2,7 @@
  * again and restart Anki. */
 export const CONFIG = {
   indent: "    ",          // what Tab inserts; tabs are compared as this many spaces
-  typeFlag: "type",        // ```python type   -> the whole block is one text box
+  typeFlag: "type",        // ```python type   -> the whole block is typed in one editor
   typeSelector: "u",       // underlined text inside a code block is what gets typed
   storageKey: "codeTypeAnswer",
   labels: { typed: "You typed", expected: "Expected", answer: "Answer", correct: "Correct" },

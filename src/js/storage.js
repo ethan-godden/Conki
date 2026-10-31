@@ -14,16 +14,10 @@ export function saveTyped(key, value) {
 }
 
 export function loadTyped(key) {
-  let record = typeof window[CONFIG.storageKey] === "string" ? window[CONFIG.storageKey] : null;
-  if (record === null) {
-    try {
-      record = window.sessionStorage.getItem(CONFIG.storageKey);
-    } catch (err) { /* storage unavailable */ }
-  }
   try {
-    const parsed = JSON.parse(record);
+    const parsed = JSON.parse(window[CONFIG.storageKey] || window.sessionStorage.getItem(CONFIG.storageKey));
     return parsed && parsed.k === key && typeof parsed.v === "string" ? parsed.v : null;
   } catch (err) {
-    return null;
+    return null;   // nothing saved, or storage unavailable
   }
 }

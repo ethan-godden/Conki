@@ -27,8 +27,7 @@ test("part of one line is an inline gap: the editor holds the line without it", 
   assert.equal(region.kind, "inline");
   assert.equal(typed(found), '"%d\\n"');
   assert.equal(region.doc, 'printf(  , 42);');
-  assert.deepEqual(region.edit, [8, 8], "an empty spot where the typed part goes");
-  assert.equal(region.caret, 8);
+  assert.equal(region.caret, 8, "the typed part goes where the cursor starts");
   assert.equal(region.expected, code);
 });
 
@@ -38,7 +37,6 @@ test("whole lines are a lines gap; the indentation they share stays in the code"
   assert.equal(region.kind, "lines");
   assert.equal(typed(found), "    if x:\n        return 1", "whole lines, indentation included");
   assert.equal(region.doc, "def f():\n    \n    return 2", "the editor starts after the indentation they share");
-  assert.deepEqual(region.edit, [13, 13]);
   assert.equal(region.caret, 13);
   assert.equal(region.expected, code);
 });
@@ -76,7 +74,7 @@ test("the whole block is an all region and is not dedented", () => {
   assert.equal(region.kind, "all");
   assert.equal(region.expected, "  x = 1\n  y = 2");
   assert.equal(region.doc, "", "the editor starts empty");
-  assert.deepEqual(region.edit, [0, 0]);
+  assert.equal(region.caret, 0);
   assert.deepEqual(region.gap, [0, code.length]);
 });
 
@@ -94,7 +92,7 @@ test("expected is normalised: tabs, trailing spaces, blank lines at the ends", (
 });
 
 test("wholeRegion is an empty editor for a whole block", () => {
-  assert.deepEqual(wholeRegion(""), { kind: "all", expected: "", doc: "", edit: [0, 0], caret: 0, gap: [0, 0] });
+  assert.deepEqual(wholeRegion(""), { kind: "all", expected: "", doc: "", caret: 0, gap: [0, 0] });
 });
 
 test("typedBlock without underlined parts: everything is typed, no starter code", () => {
@@ -112,7 +110,6 @@ test("typedBlock leaves the underlined parts out of the starter code", () => {
   assert.equal(region.kind, "all");
   assert.equal(region.expected, code);
   assert.equal(region.doc, "def f():\n    ", "the starter code");
-  assert.deepEqual(region.edit, [0, 13], "all of it can be edited");
   assert.equal(region.caret, 13, "the cursor starts at the missing part");
   assert.deepEqual(region.holes, [[13, 21]]);
 });
@@ -121,6 +118,7 @@ test("typedBlock trims whitespace off each underlined run", () => {
   const code = "def f():\n    return 1\n";
   assert.equal(typedBlock(code, [[8, 22]]).doc, "def f():\n    \n", "run covered the line break and the indentation");
   assert.equal(typedBlock(code, [[9, 13]]).holes, undefined, "run covered only whitespace");
+  assert.equal(typedBlock("x = 1", [[0, 99]]).holes, undefined, "run reached past the end");
 });
 
 test("typedBlock supports several underlined parts", () => {

@@ -44,7 +44,7 @@
 }
 .cc .cm-editor.cm-focused { outline: none; border-color: #c9a227; }
 .cc .cm-editor .cm-scroller { font-family: inherit; line-height: inherit; }
-.cc .cm-editor .cm-content { padding: 10px 0; font-family: inherit; }
+.cc .cm-editor .cm-content { padding: 10px 0; }
 .cc .cm-editor .cm-line { padding: 0 12px; }
 .cc .cm-editor.cc-box .cm-content { min-height: 10em; }   /* the box a whole block is typed in */
 

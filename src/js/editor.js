@@ -79,13 +79,13 @@ function insertIndent({ state, dispatch }) {
 /* The block's typeable part (see regions.js): all of it, or a gap in the
  * middle of read-only code. Only the gap can be edited. */
 export function typedView(parent, { lang, region }, { onChange, onSubmit }) {
-  const { doc, edit, kind } = region;
-  const partial = edit[0] > 0 || edit[1] < doc.length;
+  const { doc, kind, caret } = region;
+  const whole = kind === "all";
 
   // The editable range, kept up to date as text is typed. Text typed at either
-  // edge belongs to it.
+  // edge belongs to it. It starts as an empty spot at the caret, or as all of the text.
   const gap = StateField.define({
-    create: () => ({ from: edit[0], to: edit[1] }),
+    create: () => (whole ? { from: 0, to: doc.length } : { from: caret, to: caret }),
     update: (range, tr) => (tr.docChanged
       ? { from: tr.changes.mapPos(range.from, -1), to: tr.changes.mapPos(range.to, 1) }
       : range),
@@ -111,26 +111,26 @@ export function typedView(parent, { lang, region }, { onChange, onSubmit }) {
     }
     if (from === to) {
       const className = "cc-placeholder" + (kind === "inline" ? " cc-gap" : "");
-      ranges.push(Decoration.widget({ widget: new Widget(className, partial ? CONFIG.gapPlaceholder : CONFIG.placeholder), side: 1 }).range(from));
+      ranges.push(Decoration.widget({ widget: new Widget(className, whole ? CONFIG.placeholder : CONFIG.gapPlaceholder), side: 1 }).range(from));
     }
     return Decoration.set(ranges, true);
   });
 
-  const submit = () => {
-    onSubmit();
-    return true;
-  };
-  const keys = [{ key: "Ctrl-Enter", run: submit }, { key: "Cmd-Enter", run: submit }];
-  keys.push(kind === "inline" ? { key: "Enter", run: submit } : { key: "Tab", run: insertIndent });
+  const submit = () => (onSubmit(), true);
 
-  const view = create(parent, doc, lang, { anchor: region.caret }, [
+  const view = create(parent, doc, lang, { anchor: caret }, [
     history(),
     keymap.of([...standardKeymap, ...historyKeymap]),
-    Prec.highest(keymap.of(keys)),
+    Prec.highest(keymap.of([
+      { key: "Ctrl-Enter", run: submit },
+      { key: "Cmd-Enter", run: submit },
+      // Enter checks in a one-line gap; everywhere else Enter starts a line and Tab indents
+      kind === "inline" ? { key: "Enter", run: submit } : { key: "Tab", run: insertIndent },
+    ])),
     gap,
     guard,
     marks,
-    EditorView.editorAttributes.of(partial ? {} : { class: "cc-box" }),
+    EditorView.editorAttributes.of(whole ? { class: "cc-box" } : {}),
     EditorView.contentAttributes.of({ id: "code-input", "aria-label": "Your answer" }),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) onChange(update.state.doc.toString());

@@ -5,37 +5,31 @@ import { CONFIG } from "./config.js";
 import { EMBED_TOKEN, fieldText } from "./field-text.js";
 import { makeRegion, maskRuns, typedBlock } from "./regions.js";
 
-let md = null;
+// html:false  -> anything that looks like HTML in the text is shown literally
+// breaks:true -> a line break typed in Anki is a line break on the card
+const md = markdownit({ html: false, breaks: true, linkify: true, typographer: false });
+md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });   // only real URLs, not "main.py"
 
-function getMd() {
-  if (md) return md;
-  // html:false  -> anything that looks like HTML in the text is shown literally
-  // breaks:true -> a line break typed in Anki is a line break on the card
-  md = markdownit({ html: false, breaks: true, linkify: true, typographer: false });
-  md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });   // only real URLs, not "main.py"
+// Leave \( ... \) and \[ ... \] alone so Anki's MathJax still sees them.
+md.inline.ruler.before("escape", "anki_math", (state, silent) => {
+  const src = state.src;
+  const pos = state.pos;
+  if (src.charCodeAt(pos) !== 0x5C) return false;
+  const open = src.charAt(pos + 1);
+  const close = open === "(" ? "\\)" : open === "[" ? "\\]" : null;
+  if (!close) return false;
+  const end = src.indexOf(close, pos + 2);
+  if (end < 0 || end + 2 > state.posMax) return false;
+  if (!silent) state.push("text", "", 0).content = src.slice(pos, end + 2);
+  state.pos = end + 2;
+  return true;
+});
 
-  // Leave \( ... \) and \[ ... \] alone so Anki's MathJax still sees them.
-  md.inline.ruler.before("escape", "anki_math", (state, silent) => {
-    const src = state.src;
-    const pos = state.pos;
-    if (src.charCodeAt(pos) !== 0x5C) return false;
-    const open = src.charAt(pos + 1);
-    const close = open === "(" ? "\\)" : open === "[" ? "\\]" : null;
-    if (!close) return false;
-    const end = src.indexOf(close, pos + 2);
-    if (end < 0 || end + 2 > state.posMax) return false;
-    if (!silent) state.push("text", "", 0).content = src.slice(pos, end + 2);
-    state.pos = end + 2;
-    return true;
-  });
-
-  // Code blocks are built as DOM afterwards; leave a marker where they go.
-  md.renderer.rules.fence = md.renderer.rules.code_block = (tokens, idx, opts, env) => {
-    env.blocks.push(tokens[idx]);
-    return '<div data-cc-block="' + (env.blocks.length - 1) + '"></div>\n';
-  };
-  return md;
-}
+// Code blocks are built as DOM afterwards; leave a marker where they go.
+md.renderer.rules.fence = md.renderer.rules.code_block = (tokens, idx, opts, env) => {
+  env.blocks.push(tokens[idx]);
+  return '<div data-cc-block="' + (env.blocks.length - 1) + '"></div>\n';
+};
 
 /* The words after the opening fence: a language and/or the `type` flag. */
 export function parseInfo(info) {
@@ -117,9 +111,8 @@ export function renderMarkdown(el, allowType) {
     mask += "0";
   }
 
-  const parser = getMd();
   const env = { blocks: [] };
-  const tokens = parser.parse(text, env);
+  const tokens = md.parse(text, env);
 
   const lines = text.split("\n");
   const lineStart = [];
@@ -150,7 +143,7 @@ export function renderMarkdown(el, allowType) {
     token.meta = { code, lang: info.lang, region };
   }
 
-  el.innerHTML = parser.renderer.render(tokens, parser.options, env);
+  el.innerHTML = md.renderer.render(tokens, md.options, env);
   restoreEmbeds(el, src.embeds);
 
   const blocks = [];
