@@ -24,8 +24,10 @@ export function maskRuns(mask) {
   return runs;
 }
 
-/* [start, end) of `code` less any whitespace at either end; null if nothing else is in it. */
+/* [start, end) of `code`, with end capped at the code's length, less any
+ * whitespace at either end; null if nothing else is in it. */
 function trimmed(code, start, end) {
+  end = Math.min(end, code.length);
   while (start < end && /\s/.test(code.charAt(start))) start++;
   while (end > start && /\s/.test(code.charAt(end - 1))) end--;
   return start < end ? [start, end] : null;
@@ -41,12 +43,8 @@ function sharedIndent(text) {
   }, indents[0] || "");
 }
 
-/* The whole block is typed, from an empty editor. */
-export function wholeRegion(code) {
-  return { kind: "all", expected: normalizeCode(code), doc: "", caret: 0, gap: [0, code.length] };
-}
-
-/* The part [start, end) is typed, from `at` on: what comes before `at` stays in the code. */
+/* The part [start, end) is typed, from `at` on: what comes before `at` stays in
+ * the code. For the whole block, [0, code.length), the editor starts empty. */
 function gapRegion(kind, code, start, end, at = start) {
   return { kind, expected: normalizeCode(code), doc: code.slice(0, at) + code.slice(end), caret: at, gap: [start, end] };
 }
@@ -68,7 +66,7 @@ export function makeRegion(code, from, to) {
   const multiLine = code.slice(start, end).indexOf("\n") >= 0;
 
   if (!wholeLines && !multiLine) return gapRegion("inline", code, start, end);
-  if (!/\S/.test(code.slice(0, lineStart)) && !/\S/.test(code.slice(lineEnd))) return wholeRegion(code);
+  if (!/\S/.test(code.slice(0, lineStart)) && !/\S/.test(code.slice(lineEnd))) return gapRegion("all", code, 0, code.length);
   return gapRegion("lines", code, lineStart, lineEnd, lineStart + sharedIndent(code.slice(lineStart, lineEnd)).length);
 }
 
@@ -79,7 +77,7 @@ export function makeRegion(code, from, to) {
 export function typedBlock(code, runs) {
   const region = makeRegion(code, 0, code.length);
   if (!region) return null;
-  const holes = runs.map(([start, end]) => trimmed(code, start, Math.min(end, code.length))).filter(Boolean);
+  const holes = runs.map(([start, end]) => trimmed(code, start, end)).filter(Boolean);
   // cut from the last hole to the first, so the offsets of the others stay right
   const starter = holes.reduceRight((rest, [start, end]) => rest.slice(0, start) + rest.slice(end), code);
   if (holes.length && /\S/.test(starter)) {

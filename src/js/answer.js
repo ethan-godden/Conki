@@ -2,7 +2,7 @@
 import { presentableDiff } from "@codemirror/merge";
 import { normalizeCode } from "./code.js";
 import { CONFIG } from "./config.js";
-import { mark, readOnlyView, returnSign } from "./editor.js";
+import { mark, readOnlyBlocks, readOnlyView, returnSign } from "./editor.js";
 import { renderMarkdown } from "./markdown.js";
 import { answerField } from "./regions.js";
 import { loadTyped } from "./storage.js";
@@ -38,13 +38,14 @@ function changeMarks(text, ranges, className) {
 function showResult(parent, { code, lang, region }, raw) {
   const labels = CONFIG.labels;
   const typed = normalizeCode(raw == null ? region.doc : raw);
-  const untouched = typed === normalizeCode(region.doc);
 
-  if (untouched || typed === region.expected) {
-    // What was left to type is tinted (for a block typed from scratch, only once it is Correct).
-    const tint = untouched ? region.holes || (region.kind === "all" ? [] : [region.gap]) : [region.gap];
-    return captioned(parent, untouched ? labels.answer : labels.correct, code, lang,
-      tint.map(([from, to]) => mark(untouched ? "c-answer" : "c-good", from, to)));
+  if (typed === normalizeCode(region.doc)) {
+    // What was left to type is tinted; for a block typed from scratch that is all of it, so nothing is.
+    const left = region.holes || (region.kind === "all" ? [] : [region.gap]);
+    return captioned(parent, labels.answer, code, lang, left.map(([from, to]) => mark("c-answer", from, to)));
+  }
+  if (typed === region.expected) {
+    return captioned(parent, labels.correct, code, lang, [mark("c-good", ...region.gap)]);
   }
 
   const changes = presentableDiff(typed, region.expected);
@@ -56,12 +57,8 @@ function showResult(parent, { code, lang, region }, raw) {
 export function renderBack(root) {
   const rendered = renderMarkdown(root.querySelector('[data-part="prompt"]'), true);
   const typed = loadTyped(rendered.key);
-  let result = null;
-
-  for (const block of rendered.blocks) {
-    if (block.region) result = showResult(block.holder, block, typed);
-    else readOnlyView(block.holder, block.code, block.lang);
-  }
+  const block = readOnlyBlocks(rendered.blocks);
+  const result = block ? showResult(block.holder, block, typed) : null;
 
   // Answer field: graded here, unless the Prompt already has its typeable block.
   const answer = root.querySelector('[data-part="answer"]');
@@ -76,9 +73,7 @@ export function renderBack(root) {
   }
 
   const back = root.querySelector('[data-part="back"]');
-  if (back) {
-    for (const block of renderMarkdown(back, false).blocks) readOnlyView(block.holder, block.code, block.lang);
-  }
+  if (back) readOnlyBlocks(renderMarkdown(back, false).blocks);
 
   // Anki scrolls to #answer; when the result sits inside the Prompt, point it there.
   if (result) {

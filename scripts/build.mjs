@@ -35,8 +35,7 @@ const result = await build({
 });
 await writeFile(script, escapeNonAscii(await readFile(script, "utf8")) + (await thirdPartyNotices(result.metafile)));
 
-await writeFile(join(dist, "front.html"), await template("front.html"));
-await writeFile(join(dist, "back.html"), await template("back.html"));
+for (const name of ["front.html", "back.html"]) await writeFile(join(dist, name), await template(name));
 await copyFile(join(src, "style.css"), join(dist, "style.css"));
 
 for (const entry of await readdir(dist, { recursive: true, withFileTypes: true })) {

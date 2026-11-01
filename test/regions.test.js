@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { field } from "./helpers/dom.js";
-import { answerField, makeRegion, maskRuns, typedBlock, wholeRegion } from "../src/js/regions.js";
+import { answerField, makeRegion, maskRuns, typedBlock } from "../src/js/regions.js";
 
 /* makeRegion() for the part of `code` between the two marks "[" and "]". */
 function regionOf(marked) {
@@ -89,10 +89,6 @@ test("a range with only whitespace is no region", () => {
 
 test("expected is normalised: tabs, trailing spaces, blank lines at the ends", () => {
   assert.equal(regionOf("\n[\tx = 1  ]\n").region.expected, "    x = 1");
-});
-
-test("wholeRegion is an empty editor for a whole block", () => {
-  assert.deepEqual(wholeRegion(""), { kind: "all", expected: "", doc: "", caret: 0, gap: [0, 0] });
 });
 
 test("typedBlock without underlined parts: everything is typed, no starter code", () => {

@@ -55,9 +55,11 @@ class Widget extends WidgetType {
   }
 }
 
+/* `text` shown at `at` in an element with `className`; it is not part of the document. */
+const widget = (className, text, at) => Decoration.widget({ widget: new Widget(className, text), side: 1 }).range(at);
+
 /* A visible line break (a return sign) at `at`, for a mark that covers one. */
-export const returnSign = (className, at) =>
-  Decoration.widget({ widget: new Widget(className, "\u21B5"), side: 1 }).range(at);
+export const returnSign = (className, at) => widget(className, "\u21B5", at);
 
 /* ---- the views ---- */
 
@@ -68,6 +70,18 @@ export function readOnlyView(parent, code, lang, marks = []) {
     EditorView.editable.of(false),
     EditorView.decorations.of(Decoration.set(marks, true)),
   ]);
+}
+
+/* Every code block of a rendered field (see markdown.js) as a read-only view,
+ * except the one that is typed: that one is returned for the caller to build,
+ * or null if there is none. */
+export function readOnlyBlocks(blocks) {
+  let typed = null;
+  for (const block of blocks) {
+    if (block.region) typed = block;
+    else readOnlyView(block.holder, block.code, block.lang);
+  }
+  return typed;
 }
 
 /* Inserts what Tab is for: CONFIG.indent, at the cursor. */
@@ -111,7 +125,7 @@ export function typedView(parent, { lang, region }, { onChange, onSubmit }) {
     }
     if (from === to) {
       const className = "cc-placeholder" + (kind === "inline" ? " cc-gap" : "");
-      ranges.push(Decoration.widget({ widget: new Widget(className, whole ? CONFIG.placeholder : CONFIG.gapPlaceholder), side: 1 }).range(from));
+      ranges.push(widget(className, whole ? CONFIG.placeholder : CONFIG.gapPlaceholder, from));
     }
     return Decoration.set(ranges, true);
   });

@@ -27,7 +27,7 @@ md.inline.ruler.before("escape", "anki_math", (state, silent) => {
 
 // Code blocks are built as DOM afterwards; leave a marker where they go.
 md.renderer.rules.fence = md.renderer.rules.code_block = (tokens, idx, opts, env) => {
-  env.blocks.push(tokens[idx]);
+  env.blocks.push(tokens[idx].meta);
   return '<div data-cc-block="' + (env.blocks.length - 1) + '"></div>\n';
 };
 
@@ -54,19 +54,16 @@ function underlinedRuns(token, lines, lineStart, mask) {
   const first = token.map[0] + 1;
   const count = (token.content.match(/\n/g) || []).length;
   const fenceIndent = /^ */.exec(lines[token.map[0]])[0].length;
-  const offsets = [];
   let rebuilt = "";
-  for (let i = 0; i < count; i++) {
-    const line = lines[first + i];
+  let inner = "";   // the mask of each line as it is in token.content, line break included
+  for (let i = first; i < first + count; i++) {
+    const line = lines[i];
     if (line === undefined) return null;
     const cut = Math.min(fenceIndent, /^ */.exec(line)[0].length);
-    for (let c = cut; c <= line.length; c++) offsets.push(lineStart[first + i] + c);
     rebuilt += line.slice(cut) + "\n";
+    inner += mask.slice(lineStart[i] + cut, lineStart[i] + line.length + 1);
   }
-  if (rebuilt !== token.content) return null;
-  let inner = "";
-  for (const offset of offsets) inner += mask.charAt(offset);
-  return maskRuns(inner);
+  return rebuilt === token.content ? maskRuns(inner) : null;
 }
 
 /* Put images, audio buttons and the like back where their placeholders are. */
@@ -137,7 +134,7 @@ export function renderMarkdown(el, allowType) {
     if (runs && info.type) {
       region = typedBlock(code, runs);
     } else if (runs && runs.length) {
-      region = makeRegion(code, runs[0][0], Math.min(runs[runs.length - 1][1], code.length));
+      region = makeRegion(code, runs[0][0], runs[runs.length - 1][1]);
     }
     if (region) typeable = token;
     token.meta = { code, lang: info.lang, region };
@@ -146,10 +143,7 @@ export function renderMarkdown(el, allowType) {
   el.innerHTML = md.renderer.render(tokens, md.options, env);
   restoreEmbeds(el, src.embeds);
 
-  const blocks = [];
-  for (const holder of el.querySelectorAll("[data-cc-block]")) {
-    const meta = env.blocks[+holder.getAttribute("data-cc-block")].meta;
-    blocks.push({ holder, code: meta.code, lang: meta.lang, region: meta.region });
-  }
+  const blocks = [...el.querySelectorAll("[data-cc-block]")]
+    .map((holder) => ({ holder, ...env.blocks[+holder.getAttribute("data-cc-block")] }));
   return { key: hash(text), blocks };
 }

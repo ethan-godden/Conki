@@ -33,8 +33,9 @@ export function fieldText(root, options = {}) {
   const embeds = [];
   let text = "";
   let mask = "";
-  let afterBreak = true;   // nothing emitted yet, or the last thing was <br> / a block edge
-  let softTail = false;    // text ends with a line break that came from the HTML source
+  // How the text ends: "break" (nothing emitted yet, or <br> / a block edge),
+  // "soft" (a line break that came from the HTML source) or "text".
+  let tail = "break";
 
   function emit(s, marked) {
     s = s.replace(/[\u200B\uFEFF]/g, "").replace(/\u00A0/g, " ");
@@ -43,37 +44,33 @@ export function fieldText(root, options = {}) {
     mask += (marked ? "1" : "0").repeat(s.length);
   }
   function hardBreak(marked) {
-    if (softTail) {
+    if (tail === "soft") {
       text = text.slice(0, -1);
       mask = mask.slice(0, -1);
     }
     emit("\n", marked);
-    afterBreak = true;
-    softTail = false;
+    tail = "break";
   }
   function blockEdge() {
-    if (text && text.charAt(text.length - 1) !== "\n") emit("\n", false);
-    afterBreak = true;
-    softTail = false;
+    if (text && !text.endsWith("\n")) emit("\n", false);
+    tail = "break";
   }
   function sourceText(s, marked) {
-    s = s.replace(/\r\n?/g, "\n");
-    if (afterBreak && s.charAt(0) === "\n") s = s.slice(1);
+    if (tail === "break" && s.startsWith("\n")) s = s.slice(1);
     if (!s) return;
     emit(s, marked);
-    afterBreak = false;
-    softTail = s.charAt(s.length - 1) === "\n";
+    tail = s.endsWith("\n") ? "soft" : "text";
   }
   function preText(s, marked) {
-    emit(s.replace(/\r\n?/g, "\n"), marked);
-    afterBreak = false;
-    softTail = false;
+    emit(s, marked);
+    tail = "text";
   }
   function walk(node, pre, marked) {
     for (let n = node.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) {
-        if (pre) preText(n.data, marked);
-        else sourceText(n.data, marked);
+        const s = n.data.replace(/\r\n?/g, "\n");
+        if (pre) preText(s, marked);
+        else sourceText(s, marked);
         continue;
       }
       if (n.nodeType !== 1) continue;
@@ -87,8 +84,7 @@ export function fieldText(root, options = {}) {
         if (options.embeds) {
           emit("\uE000" + embeds.length + "\uE001", false);
           embeds.push(n);
-          afterBreak = false;
-          softTail = false;
+          tail = "text";
         }
         continue;
       }
