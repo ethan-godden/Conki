@@ -1,5 +1,5 @@
 {
-  "name": "anki-code-card",
+  "name": "conki",
   "version": "1.0.0",
   "private": true,
   "description": "Anki note type for code cards: Markdown fields, read-only code blocks, and a typed answer that is diffed against the expected code.",
