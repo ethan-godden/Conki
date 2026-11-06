@@ -2,7 +2,7 @@
 import { readOnlyBlocks, typedView } from "./editor.js";
 import { renderMarkdown } from "./markdown.js";
 import { answerField } from "./regions.js";
-import { saveTyped } from "./storage.js";
+import {CONFIG} from "./config.js";
 
 export function renderFront(root) {
   const rendered = renderMarkdown(root.querySelector('[data-part="prompt"]'), true);
@@ -24,3 +24,12 @@ export function renderFront(root) {
   }
   saveTyped(rendered.key, typed ? typed.region.doc : "");
 }
+
+function saveTyped(key, value) {
+  const record = JSON.stringify({ k: key, v: value });
+  window[CONFIG.storageKey] = record;
+  try {
+    window.sessionStorage.setItem(CONFIG.storageKey, record);
+  } catch (err) { /* storage unavailable */ }
+}
+

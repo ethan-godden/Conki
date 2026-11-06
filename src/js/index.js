@@ -6,7 +6,6 @@ import {destroyViews, mark, readOnlyBlocks, readOnlyView, returnSign} from "./ed
 import {renderFront} from "./question.js";
 import {normalizeCode} from "./code.js";
 import {renderMarkdown} from "./markdown.js";
-import {loadTyped} from "./storage.js";
 import {answerField} from "./regions.js";
 
 function render(root) {
@@ -99,4 +98,13 @@ function showResult(parent, {code, lang, region}, raw) {
     const first = captioned(parent, labels.typed, typed, lang, changeMarks(typed, changes.map((c) => [c.fromA, c.toA]), "c-bad"));
     captioned(parent, labels.expected, region.expected, lang, changeMarks(region.expected, changes.map((c) => [c.fromB, c.toB]), "c-missed"));
     return first;
+}
+
+function loadTyped(key) {
+  try {
+    const parsed = JSON.parse(window[CONFIG.storageKey] || window.sessionStorage.getItem(CONFIG.storageKey));
+    return parsed && parsed.k === key && typeof parsed.v === "string" ? parsed.v : null;
+  } catch (err) {
+    return null;   // nothing saved, or storage unavailable
+  }
 }
