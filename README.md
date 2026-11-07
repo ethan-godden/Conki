@@ -78,16 +78,15 @@ The answer side shows the block again with what you typed compared against what 
 ### Layout
 
     src/js/               the script, one module per concern
-      index.js            entry point, defines window.CodeCard
+      index.js            entry point, defines window.CodeCard; also the answer side and
+                          its diff (presentableDiff from @codemirror/merge)
       config.js           options: Tab width, labels, the `type` word, the underline selector
       field-text.js       field HTML to plain text, and which characters were underlined
       code.js             normalising code for comparing
       regions.js          which part of a block is typed; starter code; the Answer field
       markdown.js         Markdown fields, using markdown-it
       editor.js           the CodeMirror views: read-only, and the typed block with its gap
-      storage.js          the typed answer, carried from question side to answer side
-      question.js         question side
-      answer.js           answer side, and the diff (presentableDiff from @codemirror/merge)
+      question.js         question side; saves what is typed, for the answer side to read back
     src/templates/        front.html, back.html, and loader.js, which is inlined into both
     src/style.css         the Styling
     scripts/build.mjs     the build
