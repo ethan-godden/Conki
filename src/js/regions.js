@@ -24,18 +24,22 @@ export function maskRuns(mask) {
   return runs;
 }
 
+/* True if `s` is empty or holds only whitespace. */
+const isBlank = (s) => s.trim() === "";
+
 /* [start, end) of `code`, with end capped at the code's length, less any
  * whitespace at either end; null if nothing else is in it. */
 function trimmed(code, start, end) {
-  end = Math.min(end, code.length);
-  while (start < end && /\s/.test(code.charAt(start))) start++;
-  while (end > start && /\s/.test(code.charAt(end - 1))) end--;
-  return start < end ? [start, end] : null;
+  const part = code.slice(start, end);
+  const body = part.trim();
+  if (!body) return null;
+  start += part.indexOf(body);   // where the leading whitespace ends
+  return [start, start + body.length];
 }
 
 /* The leading whitespace that every non-blank line of `text` starts with. */
 function sharedIndent(text) {
-  const indents = text.split("\n").filter((line) => line.trim()).map((line) => /^[ \t]*/.exec(line)[0]);
+  const indents = text.split("\n").filter((line) => !isBlank(line)).map((line) => /^[ \t]*/.exec(line)[0]);
   return indents.reduce((shared, indent) => {
     let i = 0;
     while (i < shared.length && shared.charAt(i) === indent.charAt(i)) i++;
@@ -62,11 +66,11 @@ export function makeRegion(code, from, to) {
   const lineStart = code.lastIndexOf("\n", start - 1) + 1;
   let lineEnd = code.indexOf("\n", end);
   if (lineEnd < 0) lineEnd = code.length;
-  const wholeLines = !/\S/.test(code.slice(lineStart, start)) && !/\S/.test(code.slice(end, lineEnd));
+  const wholeLines = isBlank(code.slice(lineStart, start)) && isBlank(code.slice(end, lineEnd));
   const multiLine = code.slice(start, end).indexOf("\n") >= 0;
 
   if (!wholeLines && !multiLine) return gapRegion("inline", code, start, end);
-  if (!/\S/.test(code.slice(0, lineStart)) && !/\S/.test(code.slice(lineEnd))) return gapRegion("all", code, 0, code.length);
+  if (isBlank(code.slice(0, lineStart)) && isBlank(code.slice(lineEnd))) return gapRegion("all", code, 0, code.length);
   return gapRegion("lines", code, lineStart, lineEnd, lineStart + sharedIndent(code.slice(lineStart, lineEnd)).length);
 }
 
@@ -80,7 +84,7 @@ export function typedBlock(code, runs) {
   const holes = runs.map(([start, end]) => trimmed(code, start, end)).filter(Boolean);
   // cut from the last hole to the first, so the offsets of the others stay right
   const starter = holes.reduceRight((rest, [start, end]) => rest.slice(0, start) + rest.slice(end), code);
-  if (holes.length && /\S/.test(starter)) {
+  if (holes.length && !isBlank(starter)) {
     region.doc = starter;
     region.caret = holes[0][0];
     region.holes = holes;

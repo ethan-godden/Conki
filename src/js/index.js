@@ -83,9 +83,10 @@ function changeMarks(text, ranges, className) {
  *   otherwise                                      -> "You typed" + "Expected" */
 function showResult(parent, {code, lang, region}, raw) {
     const labels = CONFIG.labels;
-    const typed = normalizeCode(raw == null ? region.doc : raw);
+    const starter = normalizeCode(region.doc);
+    const typed = raw == null ? starter : normalizeCode(raw);
 
-    if (typed === normalizeCode(region.doc)) {
+    if (typed === starter) {
         // What was left to type is tinted; for a block typed from scratch that is all of it, so nothing is.
         const left = region.holes || (region.kind === "all" ? [] : [region.gap]);
         return captioned(parent, labels.answer, code, lang, left.map(([from, to]) => mark("c-answer", from, to)));

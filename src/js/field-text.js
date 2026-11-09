@@ -20,6 +20,7 @@
  *           replaced in the text by \uE000<n>\uE001 and returned here, so it can
  *           be put back after Markdown rendering; otherwise they are dropped.
  */
+import { cleanText } from "./code.js";
 import { CONFIG } from "./config.js";
 
 const BLOCK_TAGS = /^(ADDRESS|ARTICLE|ASIDE|BLOCKQUOTE|DD|DETAILS|DIV|DL|DT|FIELDSET|FIGCAPTION|FIGURE|FOOTER|FORM|H[1-6]|HEADER|HR|LI|MAIN|NAV|OL|P|PRE|SECTION|SUMMARY|TABLE|TBODY|TFOOT|THEAD|TR|UL)$/;
@@ -38,7 +39,6 @@ export function fieldText(root, options = {}) {
   let tail = "break";
 
   function emit(s, marked) {
-    s = s.replace(/[\u200B\uFEFF]/g, "").replace(/\u00A0/g, " ");
     if (!s) return;
     text += s;
     mask += (marked ? "1" : "0").repeat(s.length);
@@ -68,7 +68,8 @@ export function fieldText(root, options = {}) {
   function walk(node, pre, marked) {
     for (let n = node.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) {
-        const s = n.data.replace(/\r\n?/g, "\n");
+        // cleaned before the line-break rules see it, so invisible characters cannot change them
+        const s = cleanText(n.data);
         if (pre) preText(s, marked);
         else sourceText(s, marked);
         continue;

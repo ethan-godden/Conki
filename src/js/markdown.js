@@ -5,6 +5,9 @@ import { CONFIG } from "./config.js";
 import { EMBED_TOKEN, fieldText } from "./field-text.js";
 import { makeRegion, maskRuns, typedBlock } from "./regions.js";
 
+// Every embed placeholder in a string, for removing them all in one replace.
+const EMBED_TOKENS = new RegExp(EMBED_TOKEN.source, "g");
+
 // html:false  -> anything that looks like HTML in the text is shown literally
 // breaks:true -> a line break typed in Anki is a line break on the card
 const md = markdownit({ html: false, breaks: true, linkify: true, typographer: false });
@@ -72,7 +75,7 @@ function restoreEmbeds(root, embeds) {
   const walker = document.createTreeWalker(root, window.NodeFilter.SHOW_TEXT);
   const hits = [];
   let n;
-  while ((n = walker.nextNode())) if (n.data.indexOf("\uE000") >= 0) hits.push(n);
+  while ((n = walker.nextNode())) if (EMBED_TOKEN.test(n.data)) hits.push(n);
   for (const node of hits) {
     const frag = document.createDocumentFragment();
     node.data.split(EMBED_TOKEN).forEach((part, i) => {
@@ -125,7 +128,7 @@ export function renderMarkdown(el, allowType) {
     const info = parseInfo(token.info);
     let runs = null;
     if (EMBED_TOKEN.test(token.content)) {
-      token.content = token.content.replace(new RegExp(EMBED_TOKEN.source, "g"), "");
+      token.content = token.content.replace(EMBED_TOKENS, "");
     } else if (allowType && !typeable && token.type === "fence") {
       runs = underlinedRuns(token, lines, lineStart, mask) || [];
     }

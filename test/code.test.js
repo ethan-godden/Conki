@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { normalizeCode } from "../src/js/code.js";
+import { cleanText, normalizeCode } from "../src/js/code.js";
+
+test("cleanText removes only what cannot be seen", () => {
+  assert.equal(cleanText("a\r\nb\rc"), "a\nb\nc", "line endings");
+  assert.equal(cleanText("a\u00A0b"), "a b", "non-breaking spaces");
+  assert.equal(cleanText("x\u200B\uFEFFy"), "xy", "zero-width characters");
+  assert.equal(cleanText("\tx  \n\n"), "\tx  \n\n", "tabs, trailing spaces and blank lines are left to normalizeCode");
+});
 
 test("normalizeCode ignores what should not count as a difference", () => {
   assert.equal(normalizeCode("a\r\nb\rc"), "a\nb\nc", "line endings");

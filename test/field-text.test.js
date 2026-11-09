@@ -31,6 +31,8 @@ const ENCODINGS = [
   ["field starting with <br> and spaces", "<br>  x = 1  <br>  ", "  x = 1"],
   ["tab", "a\tb", "a    b"],
   ["zero-width space", "x\u200B = 1", "x = 1"],
+  ["zero-width space between a source line break and <br>", "a\n\u200B<br>b", "a\nb"],
+  ["zero-width space between <br> and a source line break", "a<br>\u200B\nb", "a\nb"],
   ["<script> element in the field", "<script>var x = 1;</script>code", "code"],
   ["list", "<ul><li>a</li><li>b</li></ul>", "a\nb"],
   ["table", "<table><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>", "a    b\nc    d"],

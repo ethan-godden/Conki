@@ -91,7 +91,7 @@ async function thirdPartyNotices(metafile) {
   const body = notices.map((notice) => notice.text).join("\n\n")
     .replace(/\r\n?/g, "\n")
     .replace(/\*\//g, "* /")                                  // must not end the comment
-    .replace(new RegExp(String.fromCharCode(169), "g"), "(c)")
+    .replace(/\u00A9/g, "(c)")
     .replace(/[^\x00-\x7F]/g, "?");                           // keep the file plain ASCII
   return `\n/*\nThird-party code compiled into this file, with its licences.\n\n${body}\n*/\n`;
 }
