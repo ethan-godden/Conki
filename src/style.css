@@ -67,6 +67,7 @@ span.cc-gap { border-radius: 1px; box-shadow: 0 0 0 1px #c9a227; }   /* part of 
 .c-bad    { background: #ffb3b3; }
 .c-missed { background: #ffe08a; }
 .c-answer { background: rgba(127, 127, 127, 0.16); }   /* the part that was to be typed */
+.c-spacing { background: rgba(127, 127, 127, 0.3); }   /* spacing that differs, where it does not count */
 
 /* ---- Markdown text in Prompt and Back ---- */
 .prompt p, .back p { margin: 0.5em 0; }

@@ -4,7 +4,7 @@ import {presentableDiff} from "@codemirror/merge";
 import {CONFIG} from "./config.js";
 import {destroyViews, mark, readOnlyBlocks, readOnlyView, returnSign} from "./editor.js";
 import {renderFront} from "./question.js";
-import {normalizeCode} from "./code.js";
+import {normalizeCode, squeezeSpacing} from "./code.js";
 import {renderMarkdown} from "./markdown.js";
 import {answerField} from "./regions.js";
 
@@ -63,11 +63,11 @@ function captioned(parent, text, code, lang, marks) {
     return caption;
 }
 
-/* Marks over the [from, to) ranges of `text` that differ, with a return sign
- * on each line break among them so a wrong or missing one can be seen. */
-function changeMarks(text, ranges, className) {
+/* Marks over the [from, to, className] ranges of `text` that differ, with a
+ * return sign on each line break among them so a wrong or missing one can be seen. */
+function changeMarks(text, ranges) {
     const marks = [];
-    for (const [from, to] of ranges) {
+    for (const [from, to, className] of ranges) {
         if (to <= from) continue;
         marks.push(mark(className, from, to));
         for (let i = text.indexOf("\n", from); i >= 0 && i < to; i = text.indexOf("\n", i + 1)) {
@@ -80,9 +80,13 @@ function changeMarks(text, ranges, className) {
 /* How a typeable block went, shown in `parent`. Returns the first element.
  *   nothing typed (or starter code left unchanged) -> "Answer"
  *   typed text equals the expected text            -> "Correct"
- *   otherwise                                      -> "You typed" + "Expected" */
+ *   the same apart from spacing inside lines       -> "Correct, apart from spacing" + "Expected"
+ *   otherwise                                      -> "You typed" + "Expected"
+ * While spacing does not count (CONFIG.ignoreSpacing), a change that only
+ * moves spacing about is marked as such, not as a mistake. */
 function showResult(parent, {code, lang, region}, raw) {
     const labels = CONFIG.labels;
+    const expected = region.expected;
     const starter = normalizeCode(region.doc);
     const typed = raw == null ? starter : normalizeCode(raw);
 
@@ -91,13 +95,20 @@ function showResult(parent, {code, lang, region}, raw) {
         const left = region.holes || (region.kind === "all" ? [] : [region.gap]);
         return captioned(parent, labels.answer, code, lang, left.map(([from, to]) => mark("c-answer", from, to)));
     }
-    if (typed === region.expected) {
+    if (typed === expected) {
         return captioned(parent, labels.correct, code, lang, [mark("c-good", ...region.gap)]);
     }
 
-    const changes = presentableDiff(typed, region.expected);
-    const first = captioned(parent, labels.typed, typed, lang, changeMarks(typed, changes.map((c) => [c.fromA, c.toA]), "c-bad"));
-    captioned(parent, labels.expected, region.expected, lang, changeMarks(region.expected, changes.map((c) => [c.fromB, c.toB]), "c-missed"));
+    const changes = presentableDiff(typed, expected);
+    const squeezed = CONFIG.ignoreSpacing ? squeezeSpacing(typed) : null;
+    const correct = squeezed !== null && squeezed === squeezeSpacing(expected);
+    // a change is only spacing if making it on its own leaves the squeezed text as it was
+    const spacing = changes.map((c) => correct || (squeezed !== null &&
+        squeezeSpacing(typed.slice(0, c.fromA) + expected.slice(c.fromB, c.toB) + typed.slice(c.toA)) === squeezed));
+    const first = captioned(parent, correct ? labels.spacing : labels.typed, typed, lang,
+        changeMarks(typed, changes.map((c, i) => [c.fromA, c.toA, spacing[i] ? "c-spacing" : "c-bad"])));
+    captioned(parent, labels.expected, expected, lang,
+        changeMarks(expected, changes.map((c, i) => [c.fromB, c.toB, spacing[i] ? "c-spacing" : "c-missed"])));
     return first;
 }
 

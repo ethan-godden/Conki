@@ -123,6 +123,7 @@ export function shown(card) {
     good: texts(".c-good"),
     bad: texts(".c-bad"),
     missed: texts(".c-missed"),
+    spacing: texts(".c-spacing"),
     answer: texts(".c-answer"),
     error: (card.querySelector(".cc-error") || {}).textContent ?? null,
   };

@@ -54,7 +54,7 @@ To make code typeable (one block per card):
 
 In an editor, Tab inserts four spaces (not in a one-line gap, where it is left alone), Enter keeps the indentation of the line above, Backspace in indentation removes four spaces, and undo, redo, selection and the usual cursor keys work as in any CodeMirror editor.
 
-The answer side shows the block again with what you typed compared against what was expected. A wrong answer is shown twice, as typed and as expected, with only the differences marked: red in what you typed, yellow in the expected code. A line break that differs is marked with a return sign.
+The answer side shows the block again with what you typed compared against what was expected. A wrong answer is shown twice, as typed and as expected, with only the differences marked: red in what you typed, yellow in the expected code. A line break that differs is marked with a return sign. Spacing inside a line is not a mistake (see below): where it differs it is marked in grey instead, and an answer that differs only in spacing is shown as "Correct, apart from spacing".
 
 - `Back` is shown below the divider on the answer side and is never typed. Use it for the answer of a card with no typing, or for an explanation.
 - `Answer` is the simple way to ask for a whole typed answer: its content is the expected code, typed into a box under the prompt. For starter code, underline the part that must be typed; everything not underlined is pre-filled. If the Prompt already has a typeable block, `Answer` is shown read-only instead.
@@ -62,6 +62,8 @@ The answer side shows the block again with what you typed compared against what 
 ## Rules worth knowing
 
 - Comparison ignores trailing spaces, blank lines at the start and end, tabs versus four spaces, and non-breaking spaces.
+- Spacing inside a line does not count either: `x=1`, `x = 1` and `x  =  1` all match. Indentation, line breaks and spacing inside quotes still count, and so does a space between two words (`int x`) or between two characters that would otherwise make a longer operator (`a - -b`). Set `ignoreSpacing: false` in `src/js/config.js` to make all spacing count again.
+- Quotes are only recognised within one line: in a string that spans lines, spacing on the later lines is treated like spacing in code, and a quote that is never closed (the apostrophe in `# don't`) makes spacing count for the rest of its line.
 - A gap is part of the code: you see the rest of the block around it, and only the gap can be edited. In a multi-line gap the cursor starts after the indentation the hidden lines share, so you do not type it.
 - Without `type`: an underlined part that spans several lines is widened to whole lines, and several underlined runs in one block make one gap, from the first to the last.
 - With `type`, and in the `Answer` field: every underlined run is left out of the starter code, and the starter code can be edited. Leaving it unchanged counts as not attempted; the answer side then shows the answer with the missing parts tinted.
@@ -80,9 +82,10 @@ The answer side shows the block again with what you typed compared against what 
     src/js/               the script, one module per concern
       index.js            entry point, defines window.CodeCard; also the answer side and
                           its diff (presentableDiff from @codemirror/merge)
-      config.js           options: Tab width, labels, the `type` word, the underline selector
+      config.js           options: Tab width, labels, the `type` word, the underline selector,
+                          whether spacing counts
       field-text.js       field HTML to plain text, and which characters were underlined
-      code.js             normalising code for comparing
+      code.js             normalising code for comparing, and squeezing out spacing that does not count
       regions.js          which part of a block is typed; starter code; the Answer field
       markdown.js         Markdown fields, using markdown-it
       editor.js           the CodeMirror views: read-only, and the typed block with its gap

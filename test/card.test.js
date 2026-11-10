@@ -93,6 +93,33 @@ session("Answer field: a wrong answer is diffed; trailing spaces do not count", 
   assert.deepEqual(view.missed, ["+"]);
 });
 
+session("Answer field: spacing inside a line does not count; it is marked, but not as a mistake", async (anki) => {
+  await anki.question(ADD);
+  anki.type("def add(a,b):\n    return a+b");
+  const view = shown(await anki.answer(ADD));
+  assert.deepEqual(view.labels, ["Correct, apart from spacing", "Expected"]);
+  assert.deepEqual(view.blocks, ["def add(a,b):\n    return a+b", ADD_CODE]);
+  assert.deepEqual([view.bad, view.missed], [[], []]);
+  assert.deepEqual(view.spacing, ["+", " ", " + "]);
+});
+
+session("Answer field: with ignoreSpacing off, spacing inside a line counts again", async (anki) => {
+  await anki.question(ADD);
+  anki.window.CodeCard.config.ignoreSpacing = false;
+  anki.type("def add(a,b):\n    return a+b");
+  const view = shown(await anki.answer(ADD));
+  assert.deepEqual(view.labels, ["You typed", "Expected"]);
+  assert.deepEqual([view.bad, view.missed, view.spacing], [["+"], [" ", " + "], []]);
+});
+
+session("Answer field: indentation still counts", async (anki) => {
+  await anki.question(ADD);
+  anki.type("def add(a, b):\n  return a + b");
+  const view = shown(await anki.answer(ADD));
+  assert.deepEqual(view.labels, ["You typed", "Expected"]);
+  assert.deepEqual([view.missed, view.spacing], [["  "], []]);
+});
+
 session("a missing line is marked on the expected side, with a return sign for its line break", async (anki) => {
   const fields = { Prompt: "Print it.", Answer: 'int main() {<br>&nbsp; &nbsp; printf("hi");<br>&nbsp; &nbsp; return 0;<br>}' };
   await anki.question(fields);
@@ -216,8 +243,9 @@ session("underlined lines: a wrong answer shows the block as typed and the block
   const view = shown(await anki.answer(FIB));
   assert.deepEqual(view.labels, ["You typed", "Expected"]);
   assert.deepEqual(view.blocks, [FIB_CODE.replace("n < 2", "n <= 1").replace("(n - 1) + fib(n - 2)", "(n-1) + fib(n-2)"), FIB_CODE]);
-  assert.deepEqual(view.bad, ["= 1", "-", "-"], "what was typed wrongly");
-  assert.deepEqual(view.missed, [" 2", " - ", " - "], "what was expected instead");
+  assert.deepEqual(view.bad, ["= 1"], "what was typed wrongly");
+  assert.deepEqual(view.missed, [" 2"], "what was expected instead");
+  assert.deepEqual(view.spacing, ["-", "-", " - ", " - "], "spacing that differs is marked, but not as a mistake");
 });
 
 session("underlined lines: nothing typed shows the answer with the gap tinted", async (anki) => {

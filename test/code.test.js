@@ -1,6 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cleanText, normalizeCode } from "../src/js/code.js";
+import { cleanText, normalizeCode, squeezeSpacing } from "../src/js/code.js";
+
+const same = (a, b) => squeezeSpacing(normalizeCode(a)) === squeezeSpacing(normalizeCode(b));
+
+test("squeezeSpacing: spacing inside a line does not count where it cannot change the code", () => {
+  for (const [a, b] of [["x=1", "x = 1"], ["f( a, b )", "f(a,b)"], ["if (x) {", "if(x){"], ["a  =  1", "a = 1"],
+    ["int *p", "int* p"], ["x = -1", "x =-1"], ["a && !b", "a&&!b"], ["def f() -> int:", "def f()->int:"]]) {
+    assert.ok(same(a, b), `${a} matches ${b}`);
+  }
+});
+
+test("squeezeSpacing: indentation, quotes, and spacing that splits words or operators still count", () => {
+  for (const [a, b] of [["    x", "  x"], ["a\nb", "a b"], ["int x", "intx"], ['"a b"', '"a  b"'], ["c == ' '", "c == ''"],
+    ["a - -b", "a--b"], ["i + +j", "i++j"], ["a / *p", "a /*p"], ["x * = 2", "x *= 2"]]) {
+    assert.ok(!same(a, b), `${a} does not match ${b}`);
+  }
+});
+
+test("squeezeSpacing: a quote that is not closed keeps the rest of its line as it is", () => {
+  assert.equal(squeezeSpacing("x = 1  # don't  panic"), "x=1#don't  panic");
+});
 
 test("cleanText removes only what cannot be seen", () => {
   assert.equal(cleanText("a\r\nb\rc"), "a\nb\nc", "line endings");
