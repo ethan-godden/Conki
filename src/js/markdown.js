@@ -52,19 +52,20 @@ export function parseInfo(info) {
  * be trusted. The block's content is rebuilt from the source lines and
  * compared with what markdown-it produced, so offsets are only used when
  * they are known to be exact. */
-function underlinedRuns(token, lines, lineStart, mask) {
+function underlinedRuns(token, lines, mask) {
   if (token.level !== 0 || !token.map) return null;
   const first = token.map[0] + 1;
   const count = (token.content.match(/\n/g) || []).length;
   const fenceIndent = /^ */.exec(lines[token.map[0]])[0].length;
+  let at = 0;   // where each line starts in the field's text, and so in mask
+  for (let i = 0; i < first; i++) at += lines[i].length + 1;
   let rebuilt = "";
   let inner = "";   // the mask of each line as it is in token.content, line break included
-  for (let i = first; i < first + count; i++) {
-    const line = lines[i];
-    if (line === undefined) return null;
+  for (const line of lines.slice(first, first + count)) {
     const cut = Math.min(fenceIndent, /^ */.exec(line)[0].length);
     rebuilt += line.slice(cut) + "\n";
-    inner += mask.slice(lineStart[i] + cut, lineStart[i] + line.length + 1);
+    inner += mask.slice(at + cut, at + line.length + 1);
+    at += line.length + 1;
   }
   return rebuilt === token.content ? maskRuns(inner) : null;
 }
@@ -113,14 +114,7 @@ export function renderMarkdown(el, allowType) {
 
   const env = { blocks: [] };
   const tokens = md.parse(text, env);
-
   const lines = text.split("\n");
-  const lineStart = [];
-  let pos = 0;
-  for (const line of lines) {
-    lineStart.push(pos);
-    pos += line.length + 1;
-  }
 
   let typeable = null;
   for (const token of tokens) {
@@ -130,7 +124,7 @@ export function renderMarkdown(el, allowType) {
     if (EMBED_TOKEN.test(token.content)) {
       token.content = token.content.replace(EMBED_TOKENS, "");
     } else if (allowType && !typeable && token.type === "fence") {
-      runs = underlinedRuns(token, lines, lineStart, mask) || [];
+      runs = underlinedRuns(token, lines, mask) || [];
     }
     const code = token.content.replace(/\n$/, "");
     let region = null;

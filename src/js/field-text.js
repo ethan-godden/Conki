@@ -39,7 +39,6 @@ export function fieldText(root, options = {}) {
   let tail = "break";
 
   function emit(s, marked) {
-    if (!s) return;
     text += s;
     mask += (marked ? "1" : "0").repeat(s.length);
   }
@@ -55,23 +54,19 @@ export function fieldText(root, options = {}) {
     if (text && !text.endsWith("\n")) emit("\n", false);
     tail = "break";
   }
-  function sourceText(s, marked) {
-    if (tail === "break" && s.startsWith("\n")) s = s.slice(1);
+  // A text node. Outside <pre>, a line break right after a break is source
+  // formatting and is dropped, and one at the end is "soft" (see hardBreak).
+  function textNode(s, pre, marked) {
+    if (!pre && tail === "break" && s.startsWith("\n")) s = s.slice(1);
     if (!s) return;
     emit(s, marked);
-    tail = s.endsWith("\n") ? "soft" : "text";
-  }
-  function preText(s, marked) {
-    emit(s, marked);
-    tail = "text";
+    tail = !pre && s.endsWith("\n") ? "soft" : "text";
   }
   function walk(node, pre, marked) {
     for (let n = node.firstChild; n; n = n.nextSibling) {
       if (n.nodeType === 3) {
         // cleaned before the line-break rules see it, so invisible characters cannot change them
-        const s = cleanText(n.data);
-        if (pre) preText(s, marked);
-        else sourceText(s, marked);
+        textNode(cleanText(n.data), pre, marked);
         continue;
       }
       if (n.nodeType !== 1) continue;
