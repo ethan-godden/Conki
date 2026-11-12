@@ -113,10 +113,10 @@ function showResult(parent, {code, lang, region}, raw) {
 }
 
 function loadTyped(key) {
-  try {
-    const parsed = JSON.parse(window[CONFIG.storageKey] || window.sessionStorage.getItem(CONFIG.storageKey));
-    return parsed && parsed.k === key && typeof parsed.v === "string" ? parsed.v : null;
-  } catch (err) {
-    return null;   // nothing saved, or storage unavailable
-  }
+    try {
+        const parsed = JSON.parse(window[CONFIG.storageKey] || window.sessionStorage.getItem(CONFIG.storageKey));
+        return parsed && parsed.k === key && typeof parsed.v === "string" ? parsed.v : null;
+    } catch (err) {
+        return null;   // nothing saved, or storage unavailable
+    }
 }
