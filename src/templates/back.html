@@ -1,8 +1,12 @@
-<div id="cc" class="cc cc-raw" data-side="back">
-  <div class="prompt" data-part="prompt">{{Prompt}}</div>
-  <hr id="answer" class="cc-sep">
-  {{#Answer}}<div data-part="answer">{{Answer}}</div>{{/Answer}}
-  {{#Back}}<div class="back" data-part="back">{{Back}}</div>{{/Back}}
+<div class="cc cc-raw" data-side="back" id="cc">
+    <div class="prompt" data-part="prompt">{{Prompt}}</div>
+    <hr class="cc-sep" id="answer">
+    {{#Answer}}
+    <div data-part="answer">{{Answer}}</div>
+    {{/Answer}}
+    {{#Back}}
+    <div class="back" data-part="back">{{Back}}</div>
+    {{/Back}}
 </div>
 
 <script data-inline src="loader.ts"></script>

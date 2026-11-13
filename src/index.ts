@@ -140,7 +140,8 @@ function saveTyped(key: string, value: string) {
     saved = JSON.stringify({k: key, v: value});
     try {
         sessionStorage.setItem(CONFIG.storageKey, saved);
-    } catch { /* storage unavailable */ }
+    } catch { /* storage unavailable */
+    }
 }
 
 function loadTyped(key: string): string | null {

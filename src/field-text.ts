@@ -30,7 +30,7 @@ const EMBED_TAGS = /^(IMG|AUDIO|VIDEO|SVG|CANVAS|IFRAME|OBJECT|EMBED|BUTTON)$/;
 /* Every embed placeholder; the number in each is the embed's index. */
 export const EMBED_TOKENS = /\uE000(\d+)\uE001/g;
 
-export function fieldText(root: Element, options: {marks?: boolean, embeds?: boolean} = {}) {
+export function fieldText(root: Element, options: { marks?: boolean, embeds?: boolean } = {}) {
     const markSelector = options.marks ? CONFIG.typeSelector : null;
     const embeds: Element[] = [];
     let text = "";

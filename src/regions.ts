@@ -62,7 +62,13 @@ function sharedIndent(text: string): string {
 /* The part [start, end) is typed, from `at` on: what comes before `at` stays in
  * the code. For the whole block, [0, code.length), the editor starts empty. */
 function gapRegion(kind: Region["kind"], code: string, start: number, end: number, at = start): Region {
-    return {kind, expected: normalizeCode(code), doc: code.slice(0, at) + code.slice(end), caret: at, gap: [start, end]};
+    return {
+        kind,
+        expected: normalizeCode(code),
+        doc: code.slice(0, at) + code.slice(end),
+        caret: at,
+        gap: [start, end]
+    };
 }
 
 /* Turn a raw range of `code` into the typed part of the block.

@@ -1,13 +1,13 @@
 /* Markdown fields: text -> markdown-it tokens -> HTML, with code blocks handed
  * back to the caller to build. */
-import markdownit from "markdown-it";
 import type {Token} from "markdown-it";
+import markdownit from "markdown-it";
 import {CONFIG} from "./config.ts";
 import {EMBED_TOKENS, fieldText} from "./field-text.ts";
 import {type CodeBlock, makeRegion, maskRuns, type Region, type Span, typedBlock} from "./regions.ts";
 
 /* A code block of a rendered field; holder is the marker element where it goes. */
-export type Block = CodeBlock & {holder: HTMLElement};
+export type Block = CodeBlock & { holder: HTMLElement };
 
 // html:false  -> anything that looks like HTML in the text is shown literally
 // breaks:true -> a line break typed in Anki is a line break on the card
@@ -88,7 +88,7 @@ function hash(s: string): string {
  * typed); blocks are only made typeable when allowType is set. key
  * identifies the field's content, so a typed answer can be matched to the
  * card it was typed on. */
-export function renderMarkdown(el: HTMLElement, allowType: boolean): {key: string, blocks: Block[]} {
+export function renderMarkdown(el: HTMLElement, allowType: boolean): { key: string, blocks: Block[] } {
     let {text, mask, embeds} = fieldText(el, {marks: allowType, embeds: true});
     if (!text.endsWith("\n")) {
         text += "\n";
