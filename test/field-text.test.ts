@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { field } from "./helpers/dom.js";
-import { normalizeCode } from "../src/js/code.js";
-import { fieldText } from "../src/js/field-text.js";
+import { field } from "./helpers/dom.ts";
+import { normalizeCode } from "../src/code.ts";
+import { fieldText } from "../src/field-text.ts";
 
-const code = (html) => normalizeCode(fieldText(field(html)).text);
+const code = (html: string) => normalizeCode(fieldText(field(html)).text);
 
 /* Field HTML in the shapes Anki produces or accepts, and the code it stands for. */
 const ENCODINGS = [

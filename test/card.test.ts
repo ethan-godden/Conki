@@ -2,13 +2,14 @@
  * for Anki's reviewer (see helpers/reviewer.js). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Reviewer, shown } from "./helpers/reviewer.js";
+import { Reviewer, shown } from "./helpers/reviewer.ts";
+import type { EditorView } from "@codemirror/view";
 
 /* A fenced block the way it is typed into a field: lines separated by <br>. */
-const fence = (info, ...lines) => ["```" + info, ...lines, "```"].join("<br>");
+const fence = (info: string, ...lines: string[]) => ["```" + info, ...lines, "```"].join("<br>");
 
 /* Runs `body` with a fresh reviewer session. */
-function session(name, body, options) {
+function session(name: string, body: (anki: Reviewer) => Promise<void>, options?: ConstructorParameters<typeof Reviewer>[0]) {
   test(name, async () => {
     const anki = new Reviewer(options);
     try {
@@ -20,7 +21,7 @@ function session(name, body, options) {
 }
 
 /* The editors a card has that can be typed into. */
-const typeable = (card) => card.querySelectorAll('.cm-content[contenteditable="true"]');
+const typeable = (card: Element) => card.querySelectorAll('.cm-content[contenteditable="true"]');
 
 const ADD = { Prompt: "Write a function <b>add</b>.", Answer: "def add(a, b):<br>&nbsp; &nbsp; return a + b" };
 const ADD_CODE = "def add(a, b):\n    return a + b";
@@ -29,13 +30,13 @@ session("Answer field: an empty editor under the prompt, and the answer stays ou
   const card = await anki.question(ADD);
   const input = anki.input;
   assert.equal(typeable(card).length, 1);
-  assert.equal(input.closest(".cm-editor").parentNode, card, "the editor comes after the prompt, not inside it");
-  assert.ok(input.closest(".cm-editor").classList.contains("cc-box"), "a box to type a whole block in");
+  assert.equal(input.closest(".cm-editor")!.parentNode, card, "the editor comes after the prompt, not inside it");
+  assert.ok(input.closest(".cm-editor")!.classList.contains("cc-box"), "a box to type a whole block in");
   assert.equal(anki.text, "");
-  assert.equal(card.querySelector(".cc-placeholder").textContent, anki.window.CodeCard.config.placeholder);
+  assert.equal(card.querySelector(".cc-placeholder")!.textContent, anki.window.CodeCard!.config.placeholder);
   assert.equal(anki.document.activeElement, input, "the editor has focus");
   assert.equal(card.classList.contains("cc-raw"), false, "the card is revealed once rendered");
-  assert.equal(card.querySelector(".prompt").innerHTML, "<p>Write a function add.</p>\n");
+  assert.equal(card.querySelector(".prompt")!.innerHTML, "<p>Write a function add.</p>\n");
   assert.equal(card.querySelector('[data-part="answer"]'), null);
   assert.equal(card.textContent.includes("return a + b"), false);
 });
@@ -55,7 +56,7 @@ session("Answer field: Tab indents, Ctrl+Enter asks Anki for the answer, a corre
   assert.deepEqual(view.labels, ["Correct"]);
   assert.deepEqual(view.blocks, [ADD_CODE]);
   assert.deepEqual(view.good, ["def add(a, b):", "    return a + b"], "one mark per line");
-  assert.equal(anki.document.getElementById("answer").className, "cc-sep", "Anki's scroll target stays on the divider");
+  assert.equal(anki.document.getElementById("answer")!.className, "cc-sep", "Anki's scroll target stays on the divider");
 });
 
 session("Answer field: Cmd+Enter works too, Shift+Tab is left alone", async (anki) => {
@@ -105,7 +106,7 @@ session("Answer field: spacing inside a line does not count; it is marked, but n
 
 session("Answer field: with ignoreSpacing off, spacing inside a line counts again", async (anki) => {
   await anki.question(ADD);
-  anki.window.CodeCard.config.ignoreSpacing = false;
+  anki.window.CodeCard!.config.ignoreSpacing = false;
   anki.type("def add(a,b):\n    return a+b");
   const view = shown(await anki.answer(ADD));
   assert.deepEqual(view.labels, ["You typed", "Expected"]);
@@ -167,7 +168,7 @@ const TYPED = { Prompt: "Write `add`:<br><br>" + fence("python type", "def add(a
 session("```lang type: the editor replaces the block inside the prompt", async (anki) => {
   const card = await anki.question(TYPED);
   assert.equal(typeable(card).length, 1);
-  assert.equal(anki.input.closest("[data-part]").className, "prompt");
+  assert.equal(anki.input.closest("[data-part]")!.className, "prompt");
   assert.ok(anki.input.classList.contains("language-python"));
   assert.equal(anki.text, "");
   assert.equal(card.textContent.includes("return"), false, "the solution is not in the page");
@@ -179,9 +180,9 @@ session("```lang type: correct answer; Anki's scroll target moves to the result;
   anki.type("def add(a, b):\n    return a + b\n\n");
   const card = await anki.answer(TYPED);
   assert.deepEqual(shown(card).labels, ["Correct"]);
-  assert.equal(anki.document.getElementById("answer").className, "code-label");
-  assert.equal(card.querySelector(".cc-sep").id, "");
-  assert.equal(card.querySelector(".back").innerHTML, "<p>Uses the <code>+</code> operator.</p>\n");
+  assert.equal(anki.document.getElementById("answer")!.className, "code-label");
+  assert.equal(card.querySelector(".cc-sep")!.id, "");
+  assert.equal(card.querySelector(".back")!.innerHTML, "<p>Uses the <code>+</code> operator.</p>\n");
 });
 
 const FIB_HEAD = 'def fib(n):\n    """Return the n-th Fibonacci number."""\n';
@@ -197,9 +198,9 @@ session("underlined lines: a gap inside the code, which starts at the code's ind
   assert.equal(anki.text, FIB_DOC);
   assert.equal(anki.view.state.selection.main.head, FIB_HEAD.length + 4, "the cursor starts in the gap");
   assert.ok(anki.input.classList.contains("language-python"));
-  assert.equal(card.querySelector(".cc-placeholder").textContent, anki.window.CodeCard.config.gapPlaceholder);
+  assert.equal(card.querySelector(".cc-placeholder")!.textContent, anki.window.CodeCard!.config.gapPlaceholder);
   assert.equal(card.querySelectorAll(".cm-line.cc-gap").length, 1, "the gap's line is tinted");
-  assert.equal(anki.input.closest(".cm-editor").classList.contains("cc-box"), false, "the code is not one big box");
+  assert.equal(anki.input.closest(".cm-editor")!.classList.contains("cc-box"), false, "the code is not one big box");
   assert.deepEqual(shown(card).blocks, [FIB_DOC]);
 });
 
@@ -299,8 +300,8 @@ session("a card with only read-only blocks has no editor to type in, and no synt
 
   card = await anki.answer(fields);
   assert.deepEqual(shown(card).labels, []);
-  assert.equal(anki.document.getElementById("answer").className, "cc-sep");
-  assert.equal(card.querySelector(".back p code").textContent, "[2, 4, 6]");
+  assert.equal(anki.document.getElementById("answer")!.className, "cc-sep");
+  assert.equal(card.querySelector(".back p code")!.textContent, "[2, 4, 6]");
   assert.equal(card.querySelectorAll(".back .cm-editor").length, 1);
 });
 
@@ -317,7 +318,7 @@ session("escaping: literal tags in prose and code stay text, on both sides", asy
     Answer: 'if (a &lt; b &amp;&amp; c &gt; d) {<br>&nbsp; &nbsp; printf("&lt;b&gt;%s&lt;/b&gt; &amp;amp;\\n", s);<br>}',
   };
   const card = await anki.question(fields);
-  assert.equal(card.querySelector(".prompt p").textContent, "Tags: <script>alert(1)</script> <b>not bold</b> vector<int> & a < b && c.");
+  assert.equal(card.querySelector(".prompt p")!.textContent, "Tags: <script>alert(1)</script> <b>not bold</b> vector<int> & a < b && c.");
   assert.equal(card.querySelectorAll(".prompt script, .prompt b, .prompt img, .prompt int").length, 0);
   assert.deepEqual(shown(card).blocks.slice(0, 1), ['#include <vector>\nstd::vector<std::vector<int>> v{{1, 2}, {3, 4}};\nconst char *s = "</script><img src=x onerror=alert(1)>";']);
 
@@ -330,12 +331,12 @@ session("escaping: literal tags in prose and code stay text, on both sides", asy
 session("math, images, tables and links in Markdown fields", async (anki) => {
   const fields = { Prompt: 'Complexity is \\(O(n \\log n)\\). <img src="_diagram.png"><br><br>| a | b |<br>|---|---|<br>| 1 | 2 |', Back: "See https://example.com/docs and `main.py`." };
   let card = await anki.question(fields);
-  assert.ok(card.querySelector(".prompt p").textContent.includes("\\(O(n \\log n)\\)"), "MathJax delimiters left for Anki");
-  assert.equal(card.querySelector(".prompt p img").getAttribute("src"), "_diagram.png");
+  assert.ok(card.querySelector(".prompt p")!.textContent.includes("\\(O(n \\log n)\\)"), "MathJax delimiters left for Anki");
+  assert.equal(card.querySelector(".prompt p img")!.getAttribute("src"), "_diagram.png");
   assert.equal(card.querySelectorAll(".prompt table td").length, 2);
   card = await anki.answer(fields);
   assert.deepEqual([...card.querySelectorAll(".back a")].map((a) => a.getAttribute("href")), ["https://example.com/docs"]);
-  assert.equal(card.querySelector(".back code").textContent, "main.py");
+  assert.equal(card.querySelector(".back code")!.textContent, "main.py");
 });
 
 session("a typeable block in the Prompt wins over the Answer field, which is then shown read-only", async (anki) => {
@@ -366,8 +367,8 @@ session("showing the question again clears what was typed", async (anki) => {
 session("each side starts with fresh editors: the last card's are destroyed", async (anki) => {
   await anki.question(ADD);
   const old = anki.view;
-  const destroyed = [];
-  old.destroy = ((destroy) => function () { destroyed.push(this); return destroy.call(this); })(old.destroy);
+  const destroyed: EditorView[] = [];
+  old.destroy = ((destroy) => function (this: EditorView) { destroyed.push(this); return destroy.call(this); })(old.destroy);
   await anki.answer(ADD);
   assert.deepEqual(destroyed, [old]);
 });
@@ -380,7 +381,7 @@ session("starter code in a ```lang type block: pre-filled, cursor at the missing
   const card = await anki.question(STARTER);
   assert.equal(anki.text, AREA_START);
   assert.equal(anki.view.state.selection.main.head, 20);
-  assert.ok(anki.input.closest(".cm-editor").classList.contains("cc-box"));
+  assert.ok(anki.input.closest(".cm-editor")!.classList.contains("cc-box"));
   assert.equal(card.querySelectorAll(".cc-gap").length, 0, "all of it is editable, so nothing is marked as the gap");
   assert.equal((card.textContent + anki.text).includes("w * h"), false, "the missing code is not in the page");
 
@@ -421,7 +422,7 @@ const LOOP_FIELDS = { Prompt: "Finish the loop.", Answer: "int sum = 0;<br>for (
 
 session("starter code in the Answer field", async (anki) => {
   let card = await anki.question(LOOP_FIELDS);
-  assert.equal(anki.input.closest(".cm-editor").parentNode, card);
+  assert.equal(anki.input.closest(".cm-editor")!.parentNode, card);
   assert.equal(anki.text, LOOP.replace("sum += xs[i];", ""));
   assert.equal(anki.view.state.selection.main.head, 47);
   assert.equal(card.querySelector('[data-part="answer"]'), null);
@@ -452,7 +453,7 @@ session("script missing from collection.media: the card says so, shows the raw f
   assert.equal(shown(card).error, "Code card: _code-card.js is missing from collection.media");
   assert.equal(card.classList.contains("cc-raw"), false);
   assert.ok(card.textContent.includes("Write a function add."));
-  assert.equal(card.querySelector('[data-part="answer"]').hidden, true, "the answer stays hidden even then");
+  assert.equal(card.querySelector<HTMLElement>('[data-part="answer"]')!.hidden, true, "the answer stays hidden even then");
 
   anki.scriptAvailable = true;
   card = await anki.question(ADD);
@@ -462,7 +463,7 @@ session("script missing from collection.media: the card says so, shows the raw f
 
 session("an error while rendering is shown on the card instead of leaving it blank", async (anki) => {
   await anki.question(ADD);
-  anki.window.CodeCard.render = () => { throw new Error("boom"); };
+  anki.window.CodeCard!.render = () => { throw new Error("boom"); };
   const card = await anki.question(ADD);
   assert.equal(shown(card).error, "Code card: boom");
   assert.equal(card.classList.contains("cc-raw"), false);

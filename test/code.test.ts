@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cleanText, normalizeCode, squeezeSpacing } from "../src/js/code.js";
+import { cleanText, normalizeCode, squeezeSpacing } from "../src/code.ts";
 
-const same = (a, b) => squeezeSpacing(normalizeCode(a)) === squeezeSpacing(normalizeCode(b));
+const same = (a: string, b: string) => squeezeSpacing(normalizeCode(a)) === squeezeSpacing(normalizeCode(b));
 
 test("squeezeSpacing: spacing inside a line does not count where it cannot change the code", () => {
   for (const [a, b] of [["x=1", "x = 1"], ["f( a, b )", "f(a,b)"], ["if (x) {", "if(x){"], ["a  =  1", "a = 1"],

@@ -3,11 +3,15 @@
  * the ones this file asks for (marks and the typed gap). */
 import {history, historyKeymap, standardKeymap} from "@codemirror/commands";
 import {indentUnit} from "@codemirror/language";
-import {EditorState, Prec, StateField} from "@codemirror/state";
-import {Decoration, EditorView, keymap, WidgetType} from "@codemirror/view";
-import {CONFIG} from "./config.js";
+import {EditorState, type Extension, Prec, type Range, StateField} from "@codemirror/state";
+import {type Command, Decoration, EditorView, keymap, WidgetType} from "@codemirror/view";
+import {CONFIG} from "./config.ts";
+import type {Block} from "./markdown.ts";
+import type {Region} from "./regions.ts";
 
-let views = [];
+export type Mark = Range<Decoration>;
+
+const views: EditorView[] = [];
 
 /* Anki replaces a card's HTML without telling the views in it, so the card
  * that was showing is cleaned up when the next one renders. */
@@ -15,12 +19,12 @@ export function destroyViews() {
     for (const view of views.splice(0)) view.destroy();
 }
 
-function create(parent, doc, lang, selection, extensions) {
+function create(parent: HTMLElement, doc: string, lang: string, extensions: Extension, anchor?: number) {
     const view = new EditorView({
         parent,
         state: EditorState.create({
             doc,
-            selection,
+            selection: anchor === undefined ? undefined : {anchor},
             extensions: [
                 EditorState.tabSize.of(CONFIG.indent.length),
                 indentUnit.of(CONFIG.indent),
@@ -37,16 +41,19 @@ function create(parent, doc, lang, selection, extensions) {
 /* ---- decorations, as the ranges readOnlyView() takes ---- */
 
 /* `className` over characters [from, to). */
-export const mark = (className, from, to) => Decoration.mark({class: className}).range(from, to);
+export const mark = (className: string, from: number, to: number): Mark => Decoration.mark({class: className}).range(from, to);
 
 class Widget extends WidgetType {
-    constructor(className, text) {
+    className: string;
+    text: string;
+
+    constructor(className: string, text: string) {
         super();
         this.className = className;
         this.text = text;
     }
 
-    eq(other) {
+    eq(other: Widget) {
         return other.className === this.className && other.text === this.text;
     }
 
@@ -60,27 +67,27 @@ class Widget extends WidgetType {
 }
 
 /* `text` shown at `at` in an element with `className`; it is not part of the document. */
-const widget = (className, text, at) => Decoration.widget({widget: new Widget(className, text), side: 1}).range(at);
+const widget = (className: string, text: string, at: number): Mark =>
+    Decoration.widget({widget: new Widget(className, text), side: 1}).range(at);
 
 /* A visible line break (a return sign) at `at`, for a mark that covers one. */
-export const returnSign = (className, at) => widget(className, "\u21B5", at);
+export const returnSign = (className: string, at: number) => widget(className, "\u21B5", at);
 
 /* ---- the views ---- */
 
 /* A block that cannot be edited. `marks` are mark() / returnSign() ranges. */
-export function readOnlyView(parent, code, lang, marks = []) {
-    return create(parent, code, lang, undefined, [
+export function readOnlyView(parent: HTMLElement, code: string, lang: string, marks: Mark[] = []) {
+    create(parent, code, lang, [
         EditorState.readOnly.of(true),
         EditorView.editable.of(false),
         EditorView.decorations.of(Decoration.set(marks, true)),
     ]);
 }
 
-/* Every code block of a rendered field (see markdown.js) as a read-only view,
- * except the one that is typed: that one is returned for the caller to build,
- * or null if there is none. */
-export function readOnlyBlocks(blocks) {
-    let typed = null;
+/* Every code block of a rendered field (see markdown.ts) as a read-only view,
+ * except the one that is typed: that one is returned for the caller to build. */
+export function readOnlyBlocks(blocks: Block[]): Block | undefined {
+    let typed;
     for (const block of blocks) {
         if (block.region) typed = block;
         else readOnlyView(block.holder, block.code, block.lang);
@@ -89,15 +96,15 @@ export function readOnlyBlocks(blocks) {
 }
 
 /* Inserts what Tab is for: CONFIG.indent, at the cursor. */
-function insertIndent({state, dispatch}) {
+const insertIndent: Command = ({state, dispatch}) => {
     dispatch(state.update(state.replaceSelection(CONFIG.indent), {scrollIntoView: true, userEvent: "input"}));
     return true;
-}
+};
 
-/* The block's typeable part (see regions.js): all of it, or a gap in the
+/* The block's typeable part (see regions.ts): all of it, or a gap in the
  * middle of read-only code. Only the gap can be edited. */
-export function typedView(parent, {lang, region}, {onChange, onSubmit}) {
-    const {doc, kind, caret} = region;
+export function typedView(parent: HTMLElement, lang: string, {doc, kind, caret}: Region,
+                          onChange: (doc: string) => void, onSubmit: () => void) {
     const whole = kind === "all";
 
     // The editable range, kept up to date as text is typed. Text typed at either
@@ -121,7 +128,7 @@ export function typedView(parent, {lang, region}, {onChange, onSubmit}) {
     // The gap is tinted (every line of it, for whole lines; framed, for part of a line); an empty one shows a placeholder.
     const marks = EditorView.decorations.compute([gap], (state) => {
         const {from, to} = state.field(gap);
-        const ranges = [];
+        const ranges: Mark[] = [];
         if (kind === "lines") {
             for (let n = state.doc.lineAt(from).number; n <= state.doc.lineAt(to).number; n++) {
                 ranges.push(Decoration.line({class: "cc-gap"}).range(state.doc.line(n).from));
@@ -138,7 +145,7 @@ export function typedView(parent, {lang, region}, {onChange, onSubmit}) {
 
     const submit = () => (onSubmit(), true);
 
-    const view = create(parent, doc, lang, {anchor: caret}, [
+    const view = create(parent, doc, lang, [
         history(),
         keymap.of([...standardKeymap, ...historyKeymap]),
         Prec.highest(keymap.of([
@@ -155,7 +162,6 @@ export function typedView(parent, {lang, region}, {onChange, onSubmit}) {
         EditorView.updateListener.of((update) => {
             if (update.docChanged) onChange(update.state.doc.toString());
         }),
-    ]);
+    ], caret);
     window.setTimeout(() => view.focus(), 0);
-    return view;
 }

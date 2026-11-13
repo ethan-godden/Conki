@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import { built } from "./helpers/reviewer.js";
+import { built } from "./helpers/reviewer.ts";
 
 const root = new URL("../", import.meta.url);
 const pkg = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
@@ -39,8 +39,8 @@ test("running the script defines CodeCard and nothing else it did not have to", 
   const before = new Set(Object.keys(window));
   window.eval(built.script);
   assert.deepEqual(Object.keys(window).filter((key) => !before.has(key)), ["CodeCard"]);
-  assert.deepEqual(Object.keys(window.CodeCard).sort(), ["config", "render", "version"]);
-  assert.equal(window.CodeCard.version, pkg.version);
+  assert.deepEqual(Object.keys(window.CodeCard!).sort(), ["config", "render", "version"]);
+  assert.equal(window.CodeCard!.version, pkg.version);
 });
 
 test("running the script twice keeps the first CodeCard", () => {
@@ -52,17 +52,17 @@ test("running the script twice keeps the first CodeCard", () => {
 });
 
 test("the loader is inlined into both templates", () => {
-  const script = (html) => /<script>\n([\s\S]*?)<\/script>/.exec(html)[1];
+  const script = (html: string) => /<script>\n([\s\S]*?)<\/script>/.exec(html)![1];
   for (const html of [built.front, built.back]) {
     assert.equal(/data-inline/.test(html), false);
-    assert.equal(html.match(/<script/g).length, 1);
+    assert.equal(html.match(/<script/g)!.length, 1);
     assert.match(script(html), /CodeCard\.render\(root\)/);
   }
   assert.equal(script(built.front), script(built.back));
 });
 
 test("the templates use the fields the note type has", () => {
-  const used = (html) => [...new Set([...html.matchAll(/\{\{[#^/]?([^}]+)\}\}/g)].map((match) => match[1]))].sort();
+  const used = (html: string) => [...new Set([...html.matchAll(/\{\{[#^/]?([^}]+)\}\}/g)].map((match) => match[1]))].sort();
   assert.deepEqual(used(built.front), ["Answer", "Prompt"]);
   assert.deepEqual(used(built.back), ["Answer", "Back", "Prompt"]);
   assert.match(built.back, /id="answer"/, "Anki scrolls to this element on the answer side");

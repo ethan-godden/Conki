@@ -11,7 +11,7 @@ Fields: `Prompt`, `Answer`, `Back`. Written for and tested on Anki desktop.
     npm install
     npm run build
 
-Requires Node.js 22 or later. The build writes everything Anki needs to `dist/`:
+Requires Node.js 22.18 or later (it runs the TypeScript build script and tests directly). The build writes everything Anki needs to `dist/`:
 
 | File | Goes into |
 |---|---|
@@ -62,7 +62,7 @@ The answer side shows the block again with what you typed compared against what 
 ## Rules worth knowing
 
 - Comparison ignores trailing spaces, blank lines at the start and end, tabs versus four spaces, and non-breaking spaces.
-- Spacing inside a line does not count either: `x=1`, `x = 1` and `x  =  1` all match. Indentation, line breaks and spacing inside quotes still count, and so does a space between two words (`int x`) or between two characters that would otherwise make a longer operator (`a - -b`). Set `ignoreSpacing: false` in `src/js/config.js` to make all spacing count again.
+- Spacing inside a line does not count either: `x=1`, `x = 1` and `x  =  1` all match. Indentation, line breaks and spacing inside quotes still count, and so does a space between two words (`int x`) or between two characters that would otherwise make a longer operator (`a - -b`). Set `ignoreSpacing: false` in `src/config.ts` to make all spacing count again.
 - Quotes are only recognised within one line: in a string that spans lines, spacing on the later lines is treated like spacing in code, and a quote that is never closed (the apostrophe in `# don't`) makes spacing count for the rest of its line.
 - A gap is part of the code: you see the rest of the block around it, and only the gap can be edited. In a multi-line gap the cursor starts after the indentation the hidden lines share, so you do not type it.
 - Without `type`: an underlined part that spans several lines is widened to whole lines, and several underlined runs in one block make one gap, from the first to the last.
@@ -74,44 +74,48 @@ The answer side shows the block again with what you typed compared against what 
 
 ## Development
 
-    npm test          build, then run every test
-    npm run build     build only
+    npm test            type-check, build, then run every test
+    npm run build       build only
+    npm run typecheck   type-check only (tsc; nothing is emitted)
 
 ### Layout
 
-    src/js/               the script, one module per concern
-      index.js            entry point, defines window.CodeCard; also the answer side and
-                          its diff (presentableDiff from @codemirror/merge)
-      config.js           options: Tab width, labels, the `type` word, the underline selector,
+    src/                  the script, one TypeScript module per concern
+      index.ts            entry point, defines window.CodeCard; renders both sides, keeps what
+                          is typed for the answer side, and diffs it (presentableDiff from
+                          @codemirror/merge)
+      config.ts           options: Tab width, labels, the `type` word, the underline selector,
                           whether spacing counts
-      field-text.js       field HTML to plain text, and which characters were underlined
-      code.js             normalising code for comparing, and squeezing out spacing that does not count
-      regions.js          which part of a block is typed; starter code; the Answer field
-      markdown.js         Markdown fields, using markdown-it
-      editor.js           the CodeMirror views: read-only, and the typed block with its gap
-      question.js         question side; saves what is typed, for the answer side to read back
-    src/templates/        front.html, back.html, and loader.js, which is inlined into both
+      field-text.ts       field HTML to plain text, and which characters were underlined
+      code.ts             normalising code for comparing, and squeezing out spacing that does not count
+      regions.ts          which part of a block is typed (the Region and CodeBlock types);
+                          starter code; the Answer field
+      markdown.ts         Markdown fields, using markdown-it
+      editor.ts           the CodeMirror views: read-only, and the typed block with its gap
+    src/templates/        front.html, back.html, and loader.ts, which is compiled and inlined into both
     src/style.css         the Styling
-    scripts/build.mjs     the build
+    scripts/build.ts      the build
     test/                 the tests
+    tsconfig.json         type checking for all of the above
 
 ### The build
 
-- esbuild compiles `src/js` and the libraries it imports (markdown-it and CodeMirror 6) into one plain script: ES2018, minified, ASCII only. Of `@codemirror/merge` only the diff function is kept; the script is about 390 kB, most of it CodeMirror itself.
+- esbuild compiles `src` and the libraries it imports (markdown-it and CodeMirror 6) into one plain script: ES2018, minified, ASCII only. Of `@codemirror/merge` only the diff function is kept; the script is about 390 kB, most of it CodeMirror itself.
 - The licence of every npm package whose code ends up in the script is appended to it as a comment.
-- In a template, `<script data-inline src="loader.js"></script>` is replaced by an inline script with that file's contents, because Anki templates cannot share a file.
+- In a template, `<script data-inline src="loader.ts"></script>` is replaced by an inline script with that file compiled to JavaScript, because Anki templates cannot share a file.
 - The first line of `dist/media/_code-card.js` names the version it was built from; `CodeCard.version` holds the same value.
 
 ### Common changes
 
-- Options: `src/js/config.js`.
+- Options: `src/config.ts`.
 - Colours and spacing: `src/style.css`.
 - Updating markdown-it or CodeMirror: `npm update`, then `npm test`. Versions are pinned in `package-lock.json`.
-- Adding a CodeMirror extension (line numbers, bracket matching, a language) is a change in `src/js/editor.js`. Colours would also need a highlight style, which is left out on purpose.
+- Adding a CodeMirror extension (line numbers, bracket matching, a language) is a change in `src/editor.ts`. Colours would also need a highlight style, which is left out on purpose.
+- TypeScript is only type-checked: esbuild and Node strip the types, so use only syntax that can be erased (no `enum`, no constructor parameter properties; `tsconfig.json` enforces this). Import other modules with their `.ts` extension.
 - Sources must stay ASCII (a test checks this). Write other characters as escapes, for example `\u00A0` for a non-breaking space.
 
 ### Tests
 
-- Unit tests import the modules in `src/js` directly, with jsdom providing the DOM.
-- Card tests (`test/card.test.js`) run the built templates and the built script in `test/helpers/reviewer.js`, a small stand-in for Anki's reviewer. They type by sending transactions and key events to the real CodeMirror view (found with `EditorView.findFromDOM`); jsdom has no layout, so the stand-in gives it the `Range` measuring methods CodeMirror expects.
+- Unit tests import the modules in `src` directly (Node strips the types), with jsdom providing the DOM.
+- Card tests (`test/card.test.ts`) run the built templates and the built script in `test/helpers/reviewer.ts`, a small stand-in for Anki's reviewer. They type by sending transactions and key events to the real CodeMirror view (found with `EditorView.findFromDOM`); jsdom has no layout, so the stand-in gives it the `Range` measuring methods CodeMirror expects.
 - Nothing here runs Anki itself or checks how a card looks. After changing templates, the Styling or keyboard handling, look at a card in Anki.

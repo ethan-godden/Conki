@@ -1,18 +1,18 @@
 /* What "the same code" means when comparing: line endings, non-breaking
  * spaces, tabs, trailing spaces and blank lines at either end are ignored. */
-import {CONFIG} from "./config.js";
+import {CONFIG} from "./config.ts";
 
-const INVISIBLE = {"\r\n": "\n", "\r": "\n", "\u00A0": " ", "\u200B": "", "\uFEFF": ""};
+const INVISIBLE: Record<string, string> = {"\r\n": "\n", "\r": "\n", "\u00A0": " ", "\u200B": "", "\uFEFF": ""};
 
 /* Differences no one can see: line endings become "\n", non-breaking spaces
  * become spaces and zero-width characters are dropped. Used on field text as
- * it is read (field-text.js), and on code before it is compared. */
-export function cleanText(s) {
+ * it is read (field-text.ts), and on code before it is compared. */
+export function cleanText(s: string): string {
     return s.replace(/\r\n?|[\u00A0\u200B\uFEFF]/g, (ch) => INVISIBLE[ch]);
 }
 
-export function normalizeCode(s) {
-    return cleanText(String(s))
+export function normalizeCode(s: string): string {
+    return cleanText(s)
         .replace(/\t/g, CONFIG.indent)
         .normalize("NFC")
         .replace(/[^\S\n]+(?=\n|$)/g, "")   // whitespace at the end of each line
@@ -30,11 +30,11 @@ const JOINS = new Set("== != <= >= => -> <- ++ -- += -= *= /= %= &= |= ^= := && 
  * cannot change what the code means, so that `x=1` and `x = 1` compare equal.
  * Indentation and quoted strings are kept as they are, and spacing between two
  * words (`int x`) or two characters in JOINS (`a - -b`) becomes one space. */
-export function squeezeSpacing(code) {
+export function squeezeSpacing(code: string): string {
     return code.split("\n").map((line) => {
-        const indent = /^\s*/.exec(line)[0];
-        const rest = line.slice(indent.length);
-        return indent + rest.replace(QUOTED_OR_SPACING, (match, quote, at) => {
+        const rest = line.trimStart();
+        const indent = line.slice(0, line.length - rest.length);
+        return indent + rest.replace(QUOTED_OR_SPACING, (match: string, quote: string | undefined, at: number) => {
             if (quote) return match;
             const before = rest.charAt(at - 1);
             const after = rest.charAt(at + match.length);

@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { field } from "./helpers/dom.js";
-import { parseInfo, renderMarkdown } from "../src/js/markdown.js";
+import { field } from "./helpers/dom.ts";
+import { parseInfo, renderMarkdown } from "../src/markdown.ts";
 
 /* The HTML a field renders to (code blocks appear as empty marker elements). */
-function html(source) {
+function html(source: string) {
   const el = field(source);
   renderMarkdown(el, false);
   return el.innerHTML;
 }
 
 /* The code blocks of a field, with what is typed in each. */
-function blocks(source, allowType = true) {
+function blocks(source: string, allowType = true) {
   return renderMarkdown(field(source), allowType).blocks.map(({ code, lang, region }) => {
-    const block = { code, lang, kind: region ? region.kind : null };
+    const block: { code: string, lang: string, kind: string | null, typed?: string, starter?: string } = { code, lang, kind: region?.kind ?? null };
     if (region && region.kind !== "all") block.typed = code.slice(...region.gap);   // the part that is typed
     if (region && region.holes) block.starter = region.doc;
     return block;
@@ -21,7 +21,7 @@ function blocks(source, allowType = true) {
 }
 
 /* A fenced block the way it is typed into a field: lines separated by <br>. */
-const fence = (info, ...lines) => ["```" + info, ...lines, "```"].join("<br>");
+const fence = (info: string, ...lines: string[]) => ["```" + info, ...lines, "```"].join("<br>");
 
 /* Field HTML exactly as Anki 26.09's note editor stored it. */
 const FROM_ANKI_EDITOR = {
@@ -78,7 +78,7 @@ test("images and audio buttons are put back where they were", () => {
 test("code blocks are left as markers and returned to the caller", () => {
   const el = field("before<br><br>" + fence("js", "let a = 1;", "let b = &lt;T&gt;a;") + "<br><br>after");
   const rendered = renderMarkdown(el, true);
-  assert.equal(el.innerHTML, '<p>before</p>\n<div data-cc-block="0"></div>\n<p>after</p>\n');
+  assert.equal(el.innerHTML, '<p>before</p>\n<div data-cc-block=""></div>\n<p>after</p>\n');
   assert.equal(rendered.blocks.length, 1);
   assert.equal(rendered.blocks[0].holder, el.querySelector("[data-cc-block]"));
   assert.equal(rendered.blocks[0].code, "let a = 1;\nlet b = <T>a;");
@@ -139,7 +139,7 @@ test("underline outside code blocks is ignored", () => {
 });
 
 test("a block nested in a list is typeable only through the flag", () => {
-  const item = (info) => "- item<br>&nbsp; &nbsp; ```" + info + "<br>&nbsp; &nbsp; x = <u>1</u><br>&nbsp; &nbsp; ```";
+  const item = (info: string) => "- item<br>&nbsp; &nbsp; ```" + info + "<br>&nbsp; &nbsp; x = <u>1</u><br>&nbsp; &nbsp; ```";
   assert.deepEqual(blocks(item("py")), [{ code: "x = 1", lang: "py", kind: null }]);
   assert.deepEqual(blocks(item("py type")), [{ code: "x = 1", lang: "py", kind: "all" }]);
 });
@@ -165,7 +165,7 @@ test("an image inside a code block is dropped from the code", () => {
 });
 
 test("the key identifies the field's content", () => {
-  const key = (source) => renderMarkdown(field(source), true).key;
+  const key = (source: string) => renderMarkdown(field(source), true).key;
   assert.equal(key("What is `x`?"), key("What is `x`?"));
   assert.notEqual(key("What is `x`?"), key("What is `y`?"));
   assert.match(key("anything"), /^-?\d+$/);
