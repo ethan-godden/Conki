@@ -2,7 +2,7 @@
  * for Anki's reviewer (see helpers/reviewer.ts). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { built, CODE_SCRIPT, MARKDOWN_SCRIPT, Reviewer, shown } from "./helpers/reviewer.ts";
+import { built, CODE_SCRIPT, CODEMIRROR_SCRIPT, MARKDOWN_SCRIPT, Reviewer, scripts, shown } from "./helpers/reviewer.ts";
 import type { EditorView } from "@codemirror/view";
 
 /* A fenced block the way it is typed into a field: lines separated by <br>. */
@@ -33,10 +33,10 @@ session("Answer field: an empty editor under the prompt, and the answer stays ou
   assert.equal(input.closest(".cm-editor")!.parentNode, card, "the editor comes after the prompt, not inside it");
   assert.ok(input.closest(".cm-editor")!.classList.contains("cc-box"), "a box to type a whole block in");
   assert.equal(anki.text, "");
-  assert.equal(card.querySelector(".cc-placeholder")!.textContent, anki.window.CodeCard!.config.placeholder);
+  assert.equal(card.querySelector(".cm-placeholder")!.textContent, anki.window.CodeCard!.config.placeholder);
   assert.equal(anki.document.activeElement, input, "the editor has focus");
   assert.equal(card.classList.contains("cc-raw"), false, "the card is revealed once rendered");
-  assert.equal(card.querySelector(".prompt")!.innerHTML, "<p>Write a function add.</p>\n");
+  assert.equal(card.querySelector('[data-part="prompt"]')!.innerHTML, "Write a function <b>add</b>.", "the Prompt is as Anki shows it");
   assert.equal(card.querySelector('[data-part="answer"]'), null);
   assert.equal(card.textContent.includes("return a + b"), false);
 });
@@ -163,196 +163,47 @@ session("what is typed is never treated as HTML", async (anki) => {
   assert.equal(elements.length, 0);
 });
 
-const TYPED = { Prompt: "Write `add`:<br><br>" + fence("python type", "def add(a, b):", "&nbsp; &nbsp; return a + b") + "<br><br>Keep it short.", Back: "Uses the `+` operator." };
-
-session("```lang type: the editor replaces the block inside the prompt", async (anki) => {
-  const card = await anki.question(TYPED);
-  assert.equal(typeable(card).length, 1);
-  assert.equal(anki.input.closest("[data-part]")!.className, "prompt");
-  assert.ok(anki.input.classList.contains("language-python"));
-  assert.equal(anki.text, "");
-  assert.equal(card.textContent.includes("return"), false, "the solution is not in the page");
-  assert.ok(card.textContent.includes("Keep it short."));
-});
-
-session("```lang type: correct answer; Anki's scroll target moves to the result; Back is rendered", async (anki) => {
-  await anki.question(TYPED);
-  anki.type("def add(a, b):\n    return a + b\n\n");
-  const card = await anki.answer(TYPED);
-  assert.deepEqual(shown(card).labels, ["Correct"]);
-  assert.equal(anki.document.getElementById("answer")!.className, "code-label");
-  assert.equal(card.querySelector(".cc-sep")!.id, "");
-  assert.equal(card.querySelector(".back")!.innerHTML, "<p>Uses the <code>+</code> operator.</p>\n");
-});
-
-const FIB_HEAD = 'def fib(n):\n    """Return the n-th Fibonacci number."""\n';
-const FIB_LINES = "    if n < 2:\n        return n\n    return fib(n - 1) + fib(n - 2)";
-const FIB_TAIL = "\nprint(fib(10))";
-const FIB_CODE = FIB_HEAD + FIB_LINES + "\n" + FIB_TAIL;
-const FIB_DOC = FIB_HEAD + "    \n" + FIB_TAIL;   // the code less its typed lines; the first one is already indented
-const FIB = { Prompt: "Complete the body:<br><br>" + fence("python", "def fib(n):", '&nbsp; &nbsp; """Return the n-th Fibonacci number."""',
-  "<u>&nbsp; &nbsp; if n &lt; 2:", "&nbsp; &nbsp; &nbsp; &nbsp; return n", "&nbsp; &nbsp; return fib(n - 1) + fib(n - 2)</u>", "", "print(fib(10))") };
-
-session("underlined lines: a gap inside the code, which starts at the code's indentation", async (anki) => {
-  const card = await anki.question(FIB);
-  assert.equal(anki.text, FIB_DOC);
-  assert.equal(anki.view.state.selection.main.head, FIB_HEAD.length + 4, "the cursor starts in the gap");
-  assert.ok(anki.input.classList.contains("language-python"));
-  assert.equal(card.querySelector(".cc-placeholder")!.textContent, anki.window.CodeCard!.config.gapPlaceholder);
-  assert.equal(card.querySelectorAll(".cm-line.cc-gap").length, 1, "the gap's line is tinted");
-  assert.equal(anki.input.closest(".cm-editor")!.classList.contains("cc-box"), false, "the code is not one big box");
-  assert.deepEqual(shown(card).blocks, [FIB_DOC]);
-});
-
-session("underlined lines: only the gap can be edited", async (anki) => {
-  await anki.question(FIB);
-  anki.view.dispatch({ changes: { from: 0, insert: "x" } });
-  anki.view.dispatch({ changes: { from: FIB_DOC.length, insert: "x" } });
-  anki.view.dispatch({ changes: { from: 0, to: FIB_DOC.length } });
-  anki.press("Backspace");
-  assert.equal(anki.text, FIB_DOC, "text before and after the gap, and its indentation, cannot be changed");
-
-  anki.type("if");
-  assert.equal(anki.text, FIB_HEAD + "    if\n" + FIB_TAIL);
-  anki.press("Backspace");
-  anki.press("Backspace");
-  anki.press("Backspace");
-  assert.equal(anki.text, FIB_DOC, "the gap can be emptied again, but no further");
-});
-
-session("underlined lines: typed with Enter, Tab and Backspace the way code is typed", async (anki) => {
-  await anki.question(FIB);
-  anki.type("if n < 2:");
-  anki.press("Enter");
-  anki.press("Tab");
-  anki.type("return n");
-  anki.press("Enter");
-  anki.press("Backspace");
-  anki.type("return fib(n - 1) + fib(n - 2)");
-  assert.equal(anki.text, FIB_CODE);
-
-  const view = shown(await anki.answer(FIB));
-  assert.deepEqual(view.labels, ["Correct"]);
-  assert.deepEqual(view.blocks, [FIB_CODE], "the block is whole again");
-  assert.deepEqual(view.good, FIB_LINES.split("\n"), "the lines that were typed");
-  assert.equal(anki.document.querySelectorAll(".cm-line.cc-gap").length, 0, "nothing is tinted as a gap any more");
-});
-
-session("underlined lines: a wrong answer shows the block as typed and the block as expected", async (anki) => {
-  await anki.question(FIB);
-  anki.type("if n <= 1:\n        return n\n    return fib(n-1) + fib(n-2)");
-  const view = shown(await anki.answer(FIB));
-  assert.deepEqual(view.labels, ["You typed", "Expected"]);
-  assert.deepEqual(view.blocks, [FIB_CODE.replace("n < 2", "n <= 1").replace("(n - 1) + fib(n - 2)", "(n-1) + fib(n-2)"), FIB_CODE]);
-  assert.deepEqual(view.bad, ["= 1"], "what was typed wrongly");
-  assert.deepEqual(view.missed, [" 2"], "what was expected instead");
-  assert.deepEqual(view.spacing, ["-", "-", " - ", " - "], "spacing that differs is marked, but not as a mistake");
-});
-
-session("underlined lines: nothing typed shows the answer with the gap tinted", async (anki) => {
-  await anki.question(FIB);
-  const view = shown(await anki.answer(FIB));
-  assert.deepEqual(view.labels, ["Answer"]);
-  assert.deepEqual(view.blocks, [FIB_CODE]);
-  assert.deepEqual(view.answer, FIB_LINES.split("\n"));
-});
-
-const C_CODE = '#include <stdio.h>\n\nint main(void) {\n    printf("%d\\n", 42);\n    return 0;\n}';
-const PRINTF = { Prompt: "Fill in the format string.<br><br>" + fence("c", "#include &lt;stdio.h&gt;", "", "int main(void) {",
-  '&nbsp; &nbsp; printf(<u>"%d\\n"</u>, 42);', "&nbsp; &nbsp; return 0;", "}") };
-
-session("underlined part of a line: a gap in the line; Enter asks Anki for the answer", async (anki) => {
-  const card = await anki.question(PRINTF);
-  assert.equal(anki.text, C_CODE.replace('"%d\\n"', ""));
-  assert.equal(card.querySelectorAll(".cc-placeholder.cc-gap").length, 1);
-  assert.equal(anki.press("Tab").defaultPrevented, false, "Tab is not captured in a one-line gap");
-  anki.type('"%d\\n"');
-  assert.equal(anki.text, C_CODE);
-  assert.equal(anki.press("Enter").defaultPrevented, true);
-  assert.deepEqual(anki.commands, ["ans"]);
-  assert.equal(anki.text, C_CODE, "and Enter does not start a new line");
-
-  const view = shown(await anki.answer(PRINTF));
-  assert.deepEqual(view.labels, ["Correct"]);
-  assert.deepEqual(view.blocks, [C_CODE]);
-  assert.deepEqual(view.good, ['"%d\\n"']);
-});
-
-session("underlined part of a line: wrong answer", async (anki) => {
-  await anki.question(PRINTF);
-  anki.type('"%s"');
-  const view = shown(await anki.answer(PRINTF));
-  assert.deepEqual(view.labels, ["You typed", "Expected"]);
-  assert.deepEqual(view.blocks, [C_CODE.replace('"%d\\n"', '"%s"'), C_CODE]);
-  assert.ok(view.bad.length > 0 && view.missed.length > 0);
-});
-
-session("a card with only read-only blocks has no editor to type in, and no syntax colouring", async (anki) => {
-  const fields = { Prompt: "What does this print?<br><br>" + fence("js", "console.log([1, 2, 3].map(x =&gt; x * 2));") + "<br><br>And this?<br><br>" +
-    fence("bash", 'echo "${#HOME}" | wc -c &amp;&amp; [[ -f ~/.zshrc ]]'), Back: "`[2, 4, 6]`<br><br>" + fence("js", "// a new array") };
+session("Prompt and Back are ordinary Anki fields: their HTML is shown as it is, and Markdown is not rendered", async (anki) => {
+  const fields = { ...ADD, Prompt: "Write <b>add</b>, **not** this:<br>```py<br>x = 1<br>```", Back: "Uses <i>+</i>, `like this`." };
   let card = await anki.question(fields);
-  assert.equal(typeable(card).length, 0);
-  assert.equal(anki.document.getElementById("code-input"), null);
-  assert.deepEqual(shown(card).blocks, ["console.log([1, 2, 3].map(x => x * 2));", 'echo "${#HOME}" | wc -c && [[ -f ~/.zshrc ]]']);
-  assert.deepEqual([...card.querySelectorAll(".cm-content")].map((node) => [...node.classList].filter((name) => name.startsWith("language-"))),
-    [["language-js"], ["language-bash"]]);
-  assert.equal(card.querySelectorAll(".cm-line span").length, 0, "plain text: no token has an element of its own");
-
+  const prompt = card.querySelector('[data-part="prompt"]')!;
+  assert.equal(prompt.innerHTML, fields.Prompt);
+  assert.equal(card.querySelectorAll(".cm-editor").length, 1, "only the editor: the fence in the Prompt stays text");
   card = await anki.answer(fields);
-  assert.deepEqual(shown(card).labels, []);
-  assert.equal(anki.document.getElementById("answer")!.className, "cc-sep");
-  assert.equal(card.querySelector(".back p code")!.textContent, "[2, 4, 6]");
-  assert.equal(card.querySelectorAll(".back .cm-editor").length, 1);
+  assert.equal(card.querySelector('[data-part="prompt"]')!.innerHTML, fields.Prompt);
+  assert.ok(card.innerHTML.includes("<div>Uses <i>+</i>, `like this`.</div>"), "Back follows the answer, unchanged");
+  assert.ok(card.querySelector("#answer")!.compareDocumentPosition(card.querySelector(".code-label")!) & 4, "the result comes after the divider");
 });
 
-session("a typed block has no syntax colouring either", async (anki) => {
-  await anki.question({ Prompt: fence("python type", "def f(): return 1") });
+session("a card without an Answer field shows its fields, with nothing to type", async (anki) => {
+  let card = await anki.question({ Prompt: "Just a question." });
+  assert.equal(typeable(card).length, 0);
+  assert.equal(card.classList.contains("cc-raw"), false);
+  card = await anki.answer({ Prompt: "Just a question.", Back: "And an answer." });
+  assert.deepEqual(shown(card).labels, []);
+  assert.ok(card.textContent.includes("And an answer."));
+});
+
+session("the typed answer has no syntax colouring", async (anki) => {
+  await anki.question(ADD);
   anki.type("def f(): return 'x'  # keywords, strings, comments");
   assert.equal(anki.input.querySelectorAll("span").length, 0);
 });
 
-session("escaping: literal tags in prose and code stay text, on both sides", async (anki) => {
-  const fields = {
-    Prompt: "Tags: &lt;script&gt;alert(1)&lt;/script&gt; &lt;b&gt;not bold&lt;/b&gt; vector&lt;int&gt; &amp;amp; a &lt; b &amp;&amp; c.<br><br>" +
-      fence("cpp", "#include &lt;vector&gt;", "std::vector&lt;std::vector&lt;int&gt;&gt; v{{1, 2}, {3, 4}};", 'const char *s = "&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;";'),
-    Answer: 'if (a &lt; b &amp;&amp; c &gt; d) {<br>&nbsp; &nbsp; printf("&lt;b&gt;%s&lt;/b&gt; &amp;amp;\\n", s);<br>}',
-  };
-  const card = await anki.question(fields);
-  assert.equal(card.querySelector(".prompt p")!.textContent, "Tags: <script>alert(1)</script> <b>not bold</b> vector<int> & a < b && c.");
-  assert.equal(card.querySelectorAll(".prompt script, .prompt b, .prompt img, .prompt int").length, 0);
-  assert.deepEqual(shown(card).blocks.slice(0, 1), ['#include <vector>\nstd::vector<std::vector<int>> v{{1, 2}, {3, 4}};\nconst char *s = "</script><img src=x onerror=alert(1)>";']);
-
+session("escaping: literal tags in the Answer field and in what is typed stay text", async (anki) => {
+  const fields = { Prompt: "Print it.", Answer: 'if (a &lt; b &amp;&amp; c &gt; d) {<br>&nbsp; &nbsp; printf("&lt;b&gt;%s&lt;/b&gt; &amp;amp;\\n", s);<br>}' };
+  await anki.question(fields);
   anki.type('if (a < b && c > d) {\n    printf("<b>%s</b> &amp;\\n", s);\n}');
   const view = shown(await anki.answer(fields));
   assert.deepEqual(view.labels, ["Correct"]);
   assert.deepEqual(view.good, ['if (a < b && c > d) {', '    printf("<b>%s</b> &amp;\\n", s);', "}"]);
 });
 
-session("math, images, tables and links in Markdown fields", async (anki) => {
-  const fields = { Prompt: 'Complexity is \\(O(n \\log n)\\). <img src="_diagram.png"><br><br>| a | b |<br>|---|---|<br>| 1 | 2 |', Back: "See https://example.com/docs and `main.py`." };
-  let card = await anki.question(fields);
-  assert.ok(card.querySelector(".prompt p")!.textContent.includes("\\(O(n \\log n)\\)"), "MathJax delimiters left for Anki");
-  assert.equal(card.querySelector(".prompt p img")!.getAttribute("src"), "_diagram.png");
-  assert.equal(card.querySelectorAll(".prompt table td").length, 2);
-  card = await anki.answer(fields);
-  assert.deepEqual([...card.querySelectorAll(".back a")].map((a) => a.getAttribute("href")), ["https://example.com/docs"]);
-  assert.equal(card.querySelector(".back code")!.textContent, "main.py");
-});
-
-session("a typeable block in the Prompt wins over the Answer field, which is then shown read-only", async (anki) => {
-  const fields = { Prompt: fence("ts type", "const x: number = 1;"), Answer: "ignored = True" };
-  const card = await anki.question(fields);
-  assert.equal(typeable(card).length, 1);
-  anki.type("const x: number = 1;");
-  const view = shown(await anki.answer(fields));
-  assert.deepEqual(view.labels, ["Correct", "Answer"]);
-  assert.deepEqual(view.blocks, ["const x: number = 1;", "ignored = True"]);
-});
-
 session("a typed answer is only used for the card it was typed on", async (anki) => {
   await anki.question(ADD);
   anki.type("something");
-  assert.deepEqual(shown(await anki.answer(TYPED)).labels, ["Answer"], "another card's answer side ignores it");
+  assert.deepEqual(shown(await anki.answer({ ...ADD, Prompt: "Another card." })).labels, ["Answer"], "another card's answer side ignores it");
+  assert.deepEqual(shown(await anki.answer({ ...ADD, Answer: "def add(a, b): return a + b" })).labels, ["Answer"], "so does one with another answer");
   assert.deepEqual(shown(await anki.answer(ADD)).labels, ["You typed", "Expected"], "its own card still has it");
 });
 
@@ -371,50 +222,6 @@ session("each side starts with fresh editors: the last card's are destroyed", as
   old.destroy = ((destroy) => function (this: EditorView) { destroyed.push(this); return destroy.call(this); })(old.destroy);
   await anki.answer(ADD);
   assert.deepEqual(destroyed, [old]);
-});
-
-const AREA = "def area(w, h):\n    return w * h\n\nprint(area(2, 3))";
-const AREA_START = "def area(w, h):\n    \n\nprint(area(2, 3))";
-const STARTER = { Prompt: "Finish the function.<br><br>" + fence("python type", "def area(w, h):", "&nbsp; &nbsp; <u>return w * h</u>", "", "print(area(2, 3))") };
-
-session("starter code in a ```lang type block: pre-filled, cursor at the missing part", async (anki) => {
-  const card = await anki.question(STARTER);
-  assert.equal(anki.text, AREA_START);
-  assert.equal(anki.view.state.selection.main.head, 20);
-  assert.ok(anki.input.closest(".cm-editor")!.classList.contains("cc-box"));
-  assert.equal(card.querySelectorAll(".cc-gap").length, 0, "all of it is editable, so nothing is marked as the gap");
-  assert.equal((card.textContent + anki.text).includes("w * h"), false, "the missing code is not in the page");
-
-  anki.view.dispatch({ changes: { from: 0, insert: "# " } });   // starter code can be edited anywhere
-  anki.view.dispatch({ changes: { from: 0, to: 2 } });
-  anki.type("return w * h");
-  assert.equal(anki.text, AREA);
-  const view = shown(await anki.answer(STARTER));
-  assert.deepEqual(view.labels, ["Correct"]);
-  assert.deepEqual(view.good, ["def area(w, h):", "    return w * h", "print(area(2, 3))"]);
-});
-
-session("starter code left unchanged counts as not attempted", async (anki) => {
-  await anki.question(STARTER);
-  let view = shown(await anki.answer(STARTER));
-  assert.deepEqual(view.labels, ["Answer"]);
-  assert.deepEqual(view.blocks, [AREA]);
-  assert.deepEqual(view.answer, ["return w * h"], "the part that was left to type is tinted");
-
-  await anki.question(STARTER);
-  anki.type("x");
-  anki.view.dispatch({ changes: { from: 0, to: anki.text.length, insert: AREA_START } });
-  view = shown(await anki.answer(STARTER));
-  assert.deepEqual(view.labels, ["Answer"], "edited back to the starter code");
-});
-
-session("starter code: a wrong completion is diffed against the whole block", async (anki) => {
-  await anki.question(STARTER);
-  anki.type("return w + h");
-  const view = shown(await anki.answer(STARTER));
-  assert.deepEqual(view.labels, ["You typed", "Expected"]);
-  assert.deepEqual(view.blocks, [AREA.replace("*", "+"), AREA]);
-  assert.deepEqual([view.bad, view.missed], [["+"], ["*"]]);
 });
 
 const LOOP = "int sum = 0;\nfor (int i = 0; i < n; i++) {\n    sum += xs[i];\n}";
@@ -440,15 +247,26 @@ session("starter code in the Answer field", async (anki) => {
   assert.deepEqual([view.labels, view.missed], [["You typed", "Expected"], ["+"]]);
 });
 
-session("the scripts are fetched once per session, the markdown one first", async (anki) => {
-  await anki.question(ADD);
-  await anki.answer(ADD);
-  await anki.question(TYPED);
-  await anki.answer(TYPED);
-  assert.deepEqual(anki.requests, [MARKDOWN_SCRIPT, CODE_SCRIPT]);
+session("starter code can be edited anywhere; edited back to as it was counts as not attempted", async (anki) => {
+  const card = await anki.question(LOOP_FIELDS);
+  assert.ok(anki.input.closest(".cm-editor")!.classList.contains("cc-box"));
+  assert.equal(card.querySelector(".cm-placeholder"), null, "no placeholder over starter code");
+  const start = anki.text;
+  anki.view.dispatch({ changes: { from: 0, insert: "// " } });
+  assert.equal(anki.text, "// " + start);
+  anki.view.dispatch({ changes: { from: 0, to: 3 } });
+  assert.deepEqual(shown(await anki.answer(LOOP_FIELDS)).labels, ["Answer"]);
 });
 
-for (const missing of [MARKDOWN_SCRIPT, CODE_SCRIPT]) {
+session("the scripts are fetched once per session, the CodeMirror one first", async (anki) => {
+  await anki.question(ADD);
+  await anki.answer(ADD);
+  await anki.question(LOOP_FIELDS);
+  await anki.answer(LOOP_FIELDS);
+  assert.deepEqual(anki.requests, [CODEMIRROR_SCRIPT, CODE_SCRIPT]);
+});
+
+for (const missing of [CODEMIRROR_SCRIPT, CODE_SCRIPT]) {
   session(`${missing} missing from collection.media: the card says so, shows the raw fields, and recovers`, async (anki) => {
     let card = await anki.question(ADD);
     assert.equal(shown(card).error, `Code card: ${missing} is missing from collection.media`);
@@ -456,18 +274,21 @@ for (const missing of [MARKDOWN_SCRIPT, CODE_SCRIPT]) {
     assert.ok(card.textContent.includes("Write a function add."));
     assert.equal(card.querySelector<HTMLElement>('[data-part="answer"]')!.hidden, true, "the answer stays hidden even then");
 
-    anki.media[missing] = missing === MARKDOWN_SCRIPT ? built.markdownScript : built.codeScript;
+    anki.media[missing] = scripts[missing];
     card = await anki.question(ADD);
     assert.equal(shown(card).error, null);
     assert.equal(typeable(card).length, 1);
   }, { missing: [missing] });
 }
 
-session("scripts from different versions: the card says to copy both", async (anki) => {
-  anki.media[MARKDOWN_SCRIPT] = built.markdownScript.replace(/(config:\w+,version:)"[^"]+"(,modules:)/, '$1"0.9.0"$2');
-  assert.notEqual(anki.media[MARKDOWN_SCRIPT], built.markdownScript);
+/* The CodeMirror script, as if from another version. */
+const oldBase = built.codemirrorScript.replace(/(\{version:)"[^"]+"(,modules:)/, '$1"0.9.0"$2');
+
+session("Code card with scripts from different versions: the card says to copy them all", async (anki) => {
+  assert.notEqual(oldBase, built.codemirrorScript);
+  anki.media[CODEMIRROR_SCRIPT] = oldBase;
   const card = await anki.question(ADD);
-  assert.match(shown(card).error!, /^Code card: _code-card\.min\.js is version \S+ but _markdown-card\.min\.js is 0\.9\.0: copy both/);
+  assert.match(shown(card).error!, /^Code card: _code-card\.min\.js is version \S+ but _codemirror\.min\.js is 0\.9\.0: copy all the scripts/);
 });
 
 session("an error while rendering is shown on the card instead of leaving it blank", async (anki) => {
@@ -482,14 +303,14 @@ session("an error while rendering is shown on the card instead of leaving it bla
 
 const NOTE = { Front: "What does <b>add</b> return?", Back: "The sum:<br>" + fence("python", "def add(a, b):", "&nbsp; &nbsp; return a + b") };
 
-session("Markdown note: the front is Markdown, and only the markdown script is fetched", async (anki) => {
+session("Markdown note: the front is Markdown, and only the scripts it needs are fetched", async (anki) => {
   const card = await anki.markdownQuestion({ Front: "Some *text* and `code`.<br>" + fence("python", "x = 1") });
   assert.equal(card.classList.contains("cc-raw"), false, "the card is revealed once rendered");
-  assert.equal(card.querySelector(".prompt p")!.innerHTML, "Some <em>text</em> and <code>code</code>.");
+  assert.equal(card.querySelector(".md p")!.innerHTML, "Some <em>text</em> and <code>code</code>.");
   assert.deepEqual(shown(card).blocks, ["x = 1"]);
   assert.equal(typeable(card).length, 0);
   assert.equal(shown(card).error, null);
-  assert.deepEqual(anki.requests, [MARKDOWN_SCRIPT]);
+  assert.deepEqual(anki.requests, [CODEMIRROR_SCRIPT, MARKDOWN_SCRIPT]);
   assert.equal(anki.window.CodeCard, undefined);
 });
 
@@ -500,31 +321,64 @@ session("Markdown note: the back shows the front, then the Back field, both read
   assert.deepEqual(view.blocks, [ADD_CODE]);
   assert.deepEqual(view.labels, []);
   assert.equal(typeable(card).length, 0);
-  assert.ok(card.querySelector(".prompt")!.textContent!.includes("What does add return?"));
+  assert.ok(card.querySelector(".md")!.textContent!.includes("What does add return?"));
   assert.equal(card.querySelector("#answer")!.tagName, "HR", "Anki scrolls to the divider");
 });
 
-session("Markdown note: nothing is typed, even for a block marked `type` or underlined", async (anki) => {
-  const fields = { Front: fence("python type", "x = 1") + "<br>" + fence("python", "<u>y = 2</u>"), Back: "" };
-  let card = await anki.markdownQuestion(fields);
-  assert.equal(typeable(card).length, 0);
-  assert.deepEqual(shown(card).blocks, ["x = 1", "y = 2"]);
-  card = await anki.markdownAnswer(fields);
-  assert.deepEqual(shown(card).labels, []);
-  assert.deepEqual(shown(card).blocks, ["x = 1", "y = 2"]);
+session("Markdown note: code blocks are read-only and plain text, with the language as a class", async (anki) => {
+  const fields = { Front: "What does this print?<br><br>" + fence("js", "console.log([1, 2, 3].map(x =&gt; x * 2));") + "<br><br>And this?<br><br>" +
+    fence("bash type", 'echo "${#HOME}" | wc -c &amp;&amp; [[ -f ~/.zshrc ]]'), Back: "" };
+  const card = await anki.markdownQuestion(fields);
+  assert.equal(typeable(card).length, 0, "nothing is typed, even with `type` after the fence");
+  assert.equal(anki.document.getElementById("code-input"), null);
+  assert.deepEqual(shown(card).blocks, ["console.log([1, 2, 3].map(x => x * 2));", 'echo "${#HOME}" | wc -c && [[ -f ~/.zshrc ]]']);
+  assert.deepEqual([...card.querySelectorAll(".cm-content")].map((node) => [...node.classList].filter((name) => name.startsWith("language-"))),
+    [["language-js"], ["language-bash"]]);
+  assert.equal(card.querySelectorAll(".cm-line span").length, 0, "plain text: no token has an element of its own");
 });
 
-session("Markdown and Code notes in one session share the markdown script", async (anki) => {
+session("Markdown note: literal tags in prose and code stay text", async (anki) => {
+  const fields = {
+    Front: "Tags: &lt;script&gt;alert(1)&lt;/script&gt; &lt;b&gt;not bold&lt;/b&gt; vector&lt;int&gt; &amp;amp; a &lt; b &amp;&amp; c.<br><br>" +
+      fence("cpp", "#include &lt;vector&gt;", 'const char *s = "&lt;/script&gt;&lt;img src=x onerror=alert(1)&gt;";'),
+  };
+  const card = await anki.markdownQuestion(fields);
+  assert.equal(card.querySelector(".md p")!.textContent, "Tags: <script>alert(1)</script> <b>not bold</b> vector<int> & a < b && c.");
+  assert.equal(card.querySelectorAll(".md script, .md b, .md img, .md int").length, 0);
+  assert.deepEqual(shown(card).blocks, ['#include <vector>\nconst char *s = "</script><img src=x onerror=alert(1)>";']);
+});
+
+session("Markdown note: math, images, tables and links", async (anki) => {
+  const fields = { Front: 'Complexity is \\(O(n \\log n)\\). <img src="_diagram.png"><br><br>| a | b |<br>|---|---|<br>| 1 | 2 |', Back: "See https://example.com/docs and `main.py`." };
+  let card = await anki.markdownQuestion(fields);
+  assert.ok(card.querySelector(".md p")!.textContent.includes("\\(O(n \\log n)\\)"), "MathJax delimiters left for Anki");
+  assert.equal(card.querySelector(".md p img")!.getAttribute("src"), "_diagram.png");
+  assert.equal(card.querySelectorAll(".md table td").length, 2);
+  card = await anki.markdownAnswer(fields);
+  assert.deepEqual([...card.querySelectorAll('[data-part="back"] a')].map((a) => a.getAttribute("href")), ["https://example.com/docs"]);
+  assert.equal(card.querySelector('[data-part="back"] code')!.textContent, "main.py");
+});
+
+session("Markdown and Code notes in one session share the CodeMirror script", async (anki) => {
   await anki.markdownQuestion(NOTE);
   await anki.question(ADD);
   anki.type(ADD_CODE);
   assert.deepEqual(shown(await anki.answer(ADD)).labels, ["Correct"]);
   await anki.markdownAnswer(NOTE);
-  assert.deepEqual(anki.requests, [MARKDOWN_SCRIPT, CODE_SCRIPT]);
+  assert.deepEqual(shown(await anki.markdownAnswer(NOTE)).blocks, [ADD_CODE]);
+  assert.deepEqual(anki.requests, [CODEMIRROR_SCRIPT, MARKDOWN_SCRIPT, CODE_SCRIPT]);
 });
 
-session("Markdown note: a missing script is shown on the card", async (anki) => {
+for (const missing of [CODEMIRROR_SCRIPT, MARKDOWN_SCRIPT]) {
+  session(`Markdown note: ${missing} missing is shown on the card`, async (anki) => {
+    const card = await anki.markdownQuestion(NOTE);
+    assert.equal(shown(card).error, `Markdown card: ${missing} is missing from collection.media`);
+    assert.equal(card.classList.contains("cc-raw"), false);
+  }, { missing: [missing] });
+}
+
+session("Markdown note with scripts from different versions: the card says to copy them all", async (anki) => {
+  anki.media[CODEMIRROR_SCRIPT] = oldBase;
   const card = await anki.markdownQuestion(NOTE);
-  assert.equal(shown(card).error, `Markdown card: ${MARKDOWN_SCRIPT} is missing from collection.media`);
-  assert.equal(card.classList.contains("cc-raw"), false);
-}, { missing: [MARKDOWN_SCRIPT] });
+  assert.match(shown(card).error!, /^Markdown card: _markdown-card\.min\.js is version \S+ but _codemirror\.min\.js is 0\.9\.0/);
+});

@@ -4,22 +4,18 @@ import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import { built, CODE_SCRIPT, MARKDOWN_SCRIPT } from "./helpers/reviewer.ts";
+import { built, CODE_SCRIPT, CODEMIRROR_SCRIPT, MARKDOWN_SCRIPT, scripts } from "./helpers/reviewer.ts";
 
 const root = new URL("../", import.meta.url);
 const pkg = JSON.parse(await readFile(new URL("package.json", root), "utf8"));
 const NON_ASCII = /[^\x00-\x7F]/;
-
-const scripts = { [MARKDOWN_SCRIPT]: built.markdownScript, [CODE_SCRIPT]: built.codeScript };
-const templates = { "code/front.html": built.code.front, "code/back.html": built.code.back,
-  "markdown/front.html": built.markdown.front, "markdown/back.html": built.markdown.back };
 
 test("dist holds exactly the files that go into Anki", async () => {
   const files = (await readdir(new URL("dist/", root), { recursive: true, withFileTypes: true }))
     .filter((entry) => entry.isFile())
     .map((entry) => relative(fileURLToPath(new URL("dist/", root)), join(entry.parentPath, entry.name))).sort();
   assert.deepEqual(files, ["code/back.html", "code/front.html", "markdown/back.html", "markdown/front.html",
-    `media/${CODE_SCRIPT}`, `media/${MARKDOWN_SCRIPT}`, "style.css"]);
+    `media/${CODE_SCRIPT}`, `media/${CODEMIRROR_SCRIPT}`, `media/${MARKDOWN_SCRIPT}`, "style.css"]);
 });
 
 test("the scripts are plain ASCII, so they do not depend on how they are decoded", () => {
@@ -37,8 +33,11 @@ test("each script says what it is and carries no source-map reference", () => {
 const notices = (script: string) => [...script.matchAll(/^----- (\S+) /gm)].map((match) => match[1]).sort();
 
 test("the licences of the bundled libraries are in the script that has their code", async () => {
-  for (const [script, names] of [[built.markdownScript, ["markdown-it", "@codemirror/view", "@codemirror/state", "@codemirror/commands"]],
-    [built.codeScript, ["@codemirror/merge"]]] as const) {
+  for (const [script, names] of [
+    [built.codemirrorScript, ["@codemirror/view", "@codemirror/state", "@codemirror/commands"]],
+    [built.markdownScript, ["markdown-it"]],
+    [built.codeScript, ["@codemirror/merge"]],
+  ] as const) {
     for (const name of names) {
       const { version } = JSON.parse(await readFile(new URL(`node_modules/${name}/package.json`, root), "utf8"));
       assert.ok(script.includes(`----- ${name} ${version} (`), `licence notice for ${name} ${version}`);
@@ -46,52 +45,60 @@ test("the licences of the bundled libraries are in the script that has their cod
   }
 });
 
-test("the code card's script has only the diff, not a second copy of a library", () => {
-  assert.deepEqual(notices(built.codeScript), ["@codemirror/merge"]);
+test("no library is in two scripts: the card scripts take CodeMirror from the CodeMirror one", () => {
+  const base = notices(built.codemirrorScript);
+  for (const script of [built.markdownScript, built.codeScript]) {
+    assert.deepEqual(notices(script).filter((name) => base.includes(name)), []);
+  }
+  assert.deepEqual(notices(built.codeScript), ["@codemirror/merge"], "of merge, only the diff");
+  assert.equal(notices(built.markdownScript).some((name) => name.startsWith("@codemirror/")), false);
   assert.ok(built.codeScript.length < 30_000, `${CODE_SCRIPT} is ${built.codeScript.length} bytes`);
 });
 
 test("a library the build read but dropped completely has no notice", () => {
-  assert.equal(built.markdownScript.includes("----- @codemirror/streamparser "), false);
-  assert.equal(notices(built.markdownScript).includes("@codemirror/merge"), false);
+  assert.equal(built.codemirrorScript.includes("----- @codemirror/streamparser "), false);
+  assert.equal(notices(built.codemirrorScript).includes("markdown-it"), false);
 });
 
-test("the markdown script defines MarkdownCard and nothing else it did not have to", () => {
+test("the CodeMirror script defines CardCodeMirror and nothing else it did not have to", () => {
   const { window } = new JSDOM("", { runScripts: "outside-only" });
   const before = new Set(Object.keys(window));
-  window.eval(built.markdownScript);
-  assert.deepEqual(Object.keys(window).filter((key) => !before.has(key)), ["MarkdownCard"]);
-  assert.deepEqual(Object.keys(window.MarkdownCard!).sort(), ["config", "modules", "render", "version"]);
-  assert.equal(window.MarkdownCard!.version, pkg.version);
+  window.eval(built.codemirrorScript);
+  assert.deepEqual(Object.keys(window).filter((key) => !before.has(key)), ["CardCodeMirror"]);
+  assert.deepEqual(Object.keys(window.CardCodeMirror!).sort(), ["modules", "version"]);
+  assert.equal(window.CardCodeMirror!.version, pkg.version);
 });
 
-test("the code script, after the markdown one, defines CodeCard and nothing else", () => {
+for (const [name, script, global] of [[MARKDOWN_SCRIPT, built.markdownScript, "MarkdownCard"], [CODE_SCRIPT, built.codeScript, "CodeCard"]] as const) {
+  test(`${name}, after the CodeMirror one, defines ${global} and nothing else; both share one set of options`, () => {
+    const { window } = new JSDOM("", { runScripts: "outside-only" });
+    window.eval(built.codemirrorScript);
+    const before = new Set(Object.keys(window));
+    window.eval(script);
+    assert.deepEqual(Object.keys(window).filter((key) => !before.has(key)), [global]);
+    assert.deepEqual(Object.keys(window[global]!).sort(), ["config", "render", "version"]);
+    assert.equal(window[global]!.version, pkg.version);
+    assert.equal(window[global]!.config, window.CardCodeMirror!.modules["config.ts"].CONFIG);
+  });
+
+  test(`${name} without the CodeMirror one fails, and defines nothing`, () => {
+    const { window } = new JSDOM("", { runScripts: "outside-only" });
+    assert.throws(() => window.eval(script), new RegExp(`${name} needs ${CODEMIRROR_SCRIPT}`));
+    assert.equal(window[global], undefined);
+  });
+}
+
+test("running the scripts twice keeps the first CardCodeMirror, MarkdownCard and CodeCard", () => {
   const { window } = new JSDOM("", { runScripts: "outside-only" });
-  window.eval(built.markdownScript);
-  const before = new Set(Object.keys(window));
-  window.eval(built.codeScript);
-  assert.deepEqual(Object.keys(window).filter((key) => !before.has(key)), ["CodeCard"]);
-  assert.deepEqual(Object.keys(window.CodeCard!).sort(), ["config", "render", "version"]);
-  assert.equal(window.CodeCard!.version, pkg.version);
-  assert.equal(window.CodeCard!.config, window.MarkdownCard!.config, "one set of options, shared");
+  const run = () => Object.values(scripts).forEach((script) => window.eval(script));
+  run();
+  const first = [window.CardCodeMirror, window.MarkdownCard, window.CodeCard];
+  run();
+  assert.deepEqual([window.CardCodeMirror, window.MarkdownCard, window.CodeCard], first);
 });
 
-test("the code script without the markdown one fails, and defines nothing", () => {
-  const { window } = new JSDOM("", { runScripts: "outside-only" });
-  assert.throws(() => window.eval(built.codeScript), new RegExp(`${CODE_SCRIPT} needs ${MARKDOWN_SCRIPT}`));
-  assert.equal(window.CodeCard, undefined);
-});
-
-test("running the scripts twice keeps the first MarkdownCard and CodeCard", () => {
-  const { window } = new JSDOM("", { runScripts: "outside-only" });
-  window.eval(built.markdownScript);
-  window.eval(built.codeScript);
-  const [markdown, code] = [window.MarkdownCard, window.CodeCard];
-  window.eval(built.markdownScript);
-  window.eval(built.codeScript);
-  assert.equal(window.MarkdownCard, markdown);
-  assert.equal(window.CodeCard, code);
-});
+const templates = { "code/front.html": built.code.front, "code/back.html": built.code.back,
+  "markdown/front.html": built.markdown.front, "markdown/back.html": built.markdown.back };
 
 test("the loader is inlined into every template, the same in each", () => {
   const script = (html: string) => /<script>\n([\s\S]*?)<\/script>/.exec(html)![1];
@@ -99,7 +106,7 @@ test("the loader is inlined into every template, the same in each", () => {
     assert.equal(/data-inline/.test(html), false, name);
     assert.equal(html.match(/<script/g)!.length, 1, name);
     assert.match(script(html), /\.render\(root\)/, name);
-    assert.ok(script(html).includes(MARKDOWN_SCRIPT) && script(html).includes(CODE_SCRIPT), name);
+    for (const file of Object.keys(scripts)) assert.ok(script(html).includes(file), `${name} loads ${file}`);
     assert.equal(script(html), script(built.code.front), name);
   }
   assert.match(built.code.front, /data-card="CodeCard"/);

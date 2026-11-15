@@ -3,7 +3,8 @@
 //   dist/code/front.html, back.html       Code note type > Cards > Front / Back Template
 //   dist/markdown/front.html, back.html   Markdown note type > Cards > Front / Back Template
 //   dist/style.css                        both note types > Cards > Styling
-//   dist/media/_markdown-card.min.js      the profile's collection.media folder (both note types)
+//   dist/media/_codemirror.min.js         the profile's collection.media folder (both note types)
+//   dist/media/_markdown-card.min.js      the profile's collection.media folder (Markdown note type)
 //   dist/media/_code-card.min.js          the profile's collection.media folder (Code note type)
 import { copyFile, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative } from "node:path";
@@ -14,31 +15,38 @@ const src = join(root, "src");
 const dist = join(root, "dist");
 const pkg = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
 const target = "es2018";
+const CODEMIRROR_SCRIPT = "_codemirror.min.js";
 const MARKDOWN_SCRIPT = "_markdown-card.min.js";
 const CODE_SCRIPT = "_code-card.min.js";
 
 await rm(dist, { recursive: true, force: true });
 await mkdir(join(dist, "media"), { recursive: true });
 
-/* In the code card's script, every other module of src is the one
- * _markdown-card.min.js already has, from window.MarkdownCard.modules (see
- * src/markdown-card.ts), not a second copy. CodeMirror comes with them, as
- * it can only be on a page once. */
-const fromMarkdownCard: Plugin = {
-  name: "from-markdown-card",
+/* In a script built on _codemirror.min.js, a module of src that one has is
+ * taken from window.CardCodeMirror.modules (see src/codemirror.ts), not
+ * compiled in a second time. CodeMirror comes with them, as it can only be on
+ * a page once. `shared` holds those modules' file names. */
+const fromCodeMirror = (name: string, shared: Set<string>): Plugin => ({
+  name: "from-codemirror",
   setup(build) {
     build.onResolve({ filter: /^\.\/[\w-]+\.ts$/ }, ({ path, importer }) =>
-      dirname(importer) === src ? { path: basename(path), namespace: "markdown-card" } : undefined);
-    build.onLoad({ filter: /.*/, namespace: "markdown-card" }, ({ path }) => ({
-      contents: `var m = window.MarkdownCard && window.MarkdownCard.modules[${JSON.stringify(path)}];
-        if (!m) throw new Error(${JSON.stringify(`${CODE_SCRIPT} needs ${MARKDOWN_SCRIPT}, with ${path} in it, loaded first`)});
+      dirname(importer) === src && shared.has(basename(path)) ? { path: basename(path), namespace: "codemirror" } : undefined);
+    build.onLoad({ filter: /.*/, namespace: "codemirror" }, ({ path }) => ({
+      contents: `var m = window.CardCodeMirror && window.CardCodeMirror.modules[${JSON.stringify(path)}];
+        if (!m) throw new Error(${JSON.stringify(`${name} needs ${CODEMIRROR_SCRIPT}, with ${path} in it, loaded first`)});
         module.exports = m;`,
       loader: "js",
     }));
-    // Of the libraries, only @codemirror/merge's diff function is used here. The
-    // rest of it, and of the packages it imports, would come along for its
-    // top-level code (styles, highlighting tags), a second copy of what
-    // _markdown-card.min.js has; marked free of side effects, it is dropped.
+  },
+});
+
+/* Of the libraries, the code card only uses @codemirror/merge's diff function.
+ * The rest of it, and of the packages it imports, would come along for its
+ * top-level code (styles, highlighting tags), a second copy of what
+ * _codemirror.min.js has; marked free of side effects, it is dropped. */
+const withoutSideEffects: Plugin = {
+  name: "without-side-effects",
+  setup(build) {
     build.onResolve({ filter: /^[^./]/ }, async ({ path, resolveDir, kind, pluginData }) => {
       if (pluginData === "resolving") return undefined;   // the build.resolve() call below
       const resolved = await build.resolve(path, { resolveDir, kind, pluginData: "resolving" });
@@ -47,12 +55,16 @@ const fromMarkdownCard: Plugin = {
   },
 };
 
-// The scripts: the modules in src and the libraries they import, each
-// compiled into one plain script.
-const markdownInputs = await script("src/markdown-card.ts", MARKDOWN_SCRIPT, []);
-const codeInputs = await script("src/code-card.ts", CODE_SCRIPT, [fromMarkdownCard]);
-const twice = codeInputs.filter((input) => markdownInputs.includes(input));
-if (twice.length) throw new Error(`${CODE_SCRIPT} has its own copy of what ${MARKDOWN_SCRIPT} provides: ${twice.join(", ")}`);
+// The scripts: each entry point and what it imports, compiled into one plain
+// script. The two card scripts are built on the CodeMirror one.
+const baseInputs = await script("src/codemirror.ts", CODEMIRROR_SCRIPT, []);
+const shared = new Set(baseInputs.filter((input) => dirname(join(root, input)) === src).map((input) => basename(input)));
+shared.delete("codemirror.ts");
+for (const [entry, name, plugins] of [["src/markdown-card.ts", MARKDOWN_SCRIPT, []], ["src/code-card.ts", CODE_SCRIPT, [withoutSideEffects]]] as const) {
+  const inputs = await script(entry, name, [fromCodeMirror(name, shared), ...plugins]);
+  const twice = inputs.filter((input) => baseInputs.includes(input));
+  if (twice.length) throw new Error(`${name} has its own copy of what ${CODEMIRROR_SCRIPT} provides: ${twice.join(", ")}`);
+}
 
 for (const type of ["code", "markdown"]) {
   await mkdir(join(dist, type));
@@ -68,7 +80,7 @@ for (const entry of await readdir(dist, { recursive: true, withFileTypes: true }
 
 /* Compiles `entry` and what it imports into dist/media/`name`. Returns the
  * inputs whose code ended up in it. */
-async function script(entry: string, name: string, plugins: Plugin[]) {
+async function script(entry: string, name: string, plugins: readonly Plugin[]) {
   const outfile = join(dist, "media", name);
   const result = await build({
     absWorkingDir: root,
@@ -82,7 +94,7 @@ async function script(entry: string, name: string, plugins: Plugin[]) {
     define: { __VERSION__: JSON.stringify(pkg.version) },
     banner: { js: `/* ${pkg.name} ${pkg.version} ${name}: generated by "npm run build". Edit the sources in src, not this file. */` },
     metafile: true,
-    plugins,
+    plugins: [...plugins],
     logLevel: "warning",
   });
   await writeFile(outfile, escapeNonAscii(await readFile(outfile, "utf8")) + (await thirdPartyNotices(result.metafile)));
@@ -103,7 +115,11 @@ async function template(name: string) {
     const { code } = await transform(await readFile(join(dir, file), "utf8"), {
       loader: "ts",
       target,
-      define: { __MARKDOWN_SCRIPT__: JSON.stringify(MARKDOWN_SCRIPT), __CODE_SCRIPT__: JSON.stringify(CODE_SCRIPT) },
+      define: {
+        __CODEMIRROR_SCRIPT__: JSON.stringify(CODEMIRROR_SCRIPT),
+        __MARKDOWN_SCRIPT__: JSON.stringify(MARKDOWN_SCRIPT),
+        __CODE_SCRIPT__: JSON.stringify(CODE_SCRIPT),
+      },
     });
     if (/<\/script/i.test(code)) throw new Error(`${file} contains "</script", which would end the inline script early`);
     scripts.set(file, code);

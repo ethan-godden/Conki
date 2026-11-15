@@ -1,16 +1,16 @@
-/* Entry point of _code-card.min.js, which defines window.CodeCard. The card
- * templates load _markdown-card.min.js, then this, and call
- * CodeCard.render(root) with the card's root element.
+/* Entry point of _code-card.min.js, which defines window.CodeCard: the Code
+ * note type. Prompt and Back are ordinary Anki fields; the Answer field's
+ * code is typed on the question side and graded on the answer side.
  *
- * Only this file and @codemirror/merge's diff are in this script: the other
- * modules of src it imports, and CodeMirror with them, come from
- * _markdown-card.min.js (see markdown-card.ts and scripts/build.ts). */
+ * Built on _codemirror.min.js, which has to load first: the modules of src
+ * this imports other than answer.ts, and CodeMirror with them, come from
+ * there (see codemirror.ts and scripts/build.ts). Only this file, answer.ts
+ * and @codemirror/merge's diff are in this script. */
 import {presentableDiff} from "@codemirror/merge";
+import {type Answer, answerField, type Span} from "./answer.ts";
 import {normalizeCode, squeezeSpacing} from "./code.ts";
 import {CONFIG} from "./config.ts";
-import {destroyViews, type Mark, mark, readOnlyBlocks, readOnlyView, returnSign, typedView} from "./editor.ts";
-import {renderMarkdown} from "./markdown.ts";
-import {answerField, type CodeBlock, type Region, type Span} from "./regions.ts";
+import {destroyViews, type Mark, mark, readOnlyView, returnSign, typedView} from "./editor.ts";
 
 declare const __VERSION__: string;   // filled in by the build
 
@@ -24,71 +24,32 @@ declare global {
 const CodeCard = {render, config: CONFIG, version: __VERSION__};
 window.CodeCard ??= CodeCard;
 
+/* Question side: an editor under the prompt to type the answer in.
+ * Answer side: how it went, in place of the Answer field. */
 function render(root: HTMLElement) {
-    const markdownVersion = window.MarkdownCard?.version;
-    if (markdownVersion !== __VERSION__) {
-        throw new Error(`_code-card.min.js is version ${__VERSION__} but _markdown-card.min.js is ${markdownVersion}: copy both into collection.media and restart Anki`);
-    }
     destroyViews();
-    if (root.dataset.side === "back") renderBack(root);
-    else renderFront(root);
-    root.classList.remove("cc-raw");
-}
-
-const part = (root: HTMLElement, name: string) => root.querySelector<HTMLElement>(`[data-part="${name}"]`);
-
-/* Question side: read-only blocks, plus the editor for the typed part. */
-function renderFront(root: HTMLElement) {
-    const {key, blocks} = renderMarkdown(part(root, "prompt")!, true);
-    let typed = readOnlyBlocks(blocks);
-
-    // Answer field: the code to type, unless the Prompt already has a typeable block.
-    const answer = part(root, "answer");
-    if (answer) {
-        const field = answerField(answer);
-        answer.remove();        // the solution does not stay in the question's page
-        if (!typed && field.region) typed = {...field, holder: root};   // typed in a box under the prompt
-    }
-
-    const region = typed?.region;
-    if (typed && region) typedView(typed.holder, typed.lang, region, (doc) => saveTyped(key, doc), () => window.pycmd?.("ans"));
-    saveTyped(key, region?.doc ?? "");
-}
-
-/* Answer side: how the typed block went, and the rest read-only. */
-function renderBack(root: HTMLElement) {
-    const {key, blocks} = renderMarkdown(part(root, "prompt")!, true);
-    const typed = loadTyped(key);
-    const block = readOnlyBlocks(blocks);
-    const result = block?.region ? showResult(block.holder, block, block.region, typed) : null;
-
-    // Answer field: graded here, unless the Prompt already has its typeable block.
-    const answer = part(root, "answer");
-    if (answer) {
-        const field = answerField(answer);
-        answer.textContent = "";
-        if (field.region && !result) showResult(answer, field, field.region, typed);
-        else if (field.region) captioned(answer, CONFIG.labels.answer, field.region.expected, "");
-    }
-
-    const back = part(root, "back");
-    if (back) readOnlyBlocks(renderMarkdown(back, false).blocks);
-
-    // Anki scrolls to #answer; when the result sits inside the Prompt, point it there.
-    if (result) {
-        root.querySelector("#answer")?.removeAttribute("id");
-        result.id = "answer";
+    const field = root.querySelector<HTMLElement>('[data-part="answer"]');
+    const answer = field && answerField(field);
+    if (!field || !answer) return;
+    // identifies the card, so a typed answer is only used on the card it was typed on
+    const key = root.querySelector('[data-part="prompt"]')!.innerHTML + "\0" + answer.code;
+    if (root.dataset.side === "back") {
+        field.textContent = "";
+        showResult(field, answer, loadTyped(key));
+    } else {
+        field.remove();        // the solution does not stay in the question's page
+        typedView(root, answer.starter, answer.caret, (doc) => saveTyped(key, doc), () => window.pycmd?.("ans"));
+        saveTyped(key, answer.starter);
     }
 }
 
-/* A caption with a read-only block under it. Returns the caption. */
-function captioned(parent: HTMLElement, text: string, code: string, lang: string, marks?: Mark[]) {
+/* A caption with a read-only block under it. */
+function captioned(parent: HTMLElement, text: string, code: string, marks?: Mark[]) {
     const caption = document.createElement("div");
     caption.className = "code-label";
     caption.textContent = text;
     parent.appendChild(caption);
-    readOnlyView(parent, code, lang, marks);
-    return caption;
+    readOnlyView(parent, code, "", marks);
 }
 
 /* Marks over the ranges of `text` that differ, each with its class name, with
@@ -105,26 +66,26 @@ function changeMarks(text: string, ranges: [...Span, string][]) {
     return marks;
 }
 
-/* How a typeable block went, shown in `parent`. Returns the first element.
+/* How the typed answer went, shown in `parent`.
  *   nothing typed (or starter code left unchanged) -> "Answer"
  *   typed text equals the expected text            -> "Correct"
  *   the same apart from spacing inside lines       -> "Correct, apart from spacing" + "Expected"
  *   otherwise                                      -> "You typed" + "Expected"
  * While spacing does not count (CONFIG.ignoreSpacing), a change that only
  * moves spacing about is marked as such, not as a mistake. */
-function showResult(parent: HTMLElement, {code, lang}: CodeBlock, region: Region, raw: string | null) {
+function showResult(parent: HTMLElement, {code, expected, holes, ...answer}: Answer, raw: string | null) {
     const {labels} = CONFIG;
-    const {expected} = region;
-    const starter = normalizeCode(region.doc);
+    const starter = normalizeCode(answer.starter);
     const typed = raw === null ? starter : normalizeCode(raw);
 
     if (typed === starter) {
-        // What was left to type is tinted; for a block typed from scratch that is all of it, so nothing is.
-        const left = region.holes ?? (region.kind === "all" ? [] : [region.gap]);
-        return captioned(parent, labels.answer, code, lang, left.map(([from, to]) => mark("c-answer", from, to)));
+        // What was left to type is tinted; for an answer typed from scratch that is all of it, so nothing is.
+        captioned(parent, labels.answer, code, holes.map(([from, to]) => mark("c-answer", from, to)));
+        return;
     }
     if (typed === expected) {
-        return captioned(parent, labels.correct, code, lang, [mark("c-good", ...region.gap)]);
+        captioned(parent, labels.correct, code, [mark("c-good", 0, code.length)]);
+        return;
     }
 
     const changes = presentableDiff(typed, expected);
@@ -133,11 +94,10 @@ function showResult(parent: HTMLElement, {code, lang}: CodeBlock, region: Region
     // a change is only spacing if making it on its own leaves the squeezed text as it was
     const spacing = changes.map((c) => correct || (squeezed !== null &&
         squeezeSpacing(typed.slice(0, c.fromA) + expected.slice(c.fromB, c.toB) + typed.slice(c.toA)) === squeezed));
-    const first = captioned(parent, correct ? labels.spacing : labels.typed, typed, lang,
+    captioned(parent, correct ? labels.spacing : labels.typed, typed,
         changeMarks(typed, changes.map((c, i) => [c.fromA, c.toA, spacing[i] ? "c-spacing" : "c-bad"])));
-    captioned(parent, labels.expected, expected, lang,
+    captioned(parent, labels.expected, expected,
         changeMarks(expected, changes.map((c, i) => [c.fromB, c.toB, spacing[i] ? "c-spacing" : "c-missed"])));
-    return first;
 }
 
 /* What was typed on the question side, for the answer side to read back. The

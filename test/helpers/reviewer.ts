@@ -11,6 +11,7 @@ import { type DOMWindow, JSDOM, requestInterceptor, VirtualConsole } from "jsdom
 const dist = new URL("../../dist/", import.meta.url);
 const read = (name: string) => readFile(new URL(name, dist), "utf8");
 
+export const CODEMIRROR_SCRIPT = "_codemirror.min.js";
 export const MARKDOWN_SCRIPT = "_markdown-card.min.js";
 export const CODE_SCRIPT = "_code-card.min.js";
 
@@ -18,8 +19,16 @@ export const built = {
   code: { front: await read("code/front.html"), back: await read("code/back.html") },
   markdown: { front: await read("markdown/front.html"), back: await read("markdown/back.html") },
   style: await read("style.css"),
+  codemirrorScript: await read(`media/${CODEMIRROR_SCRIPT}`),
   markdownScript: await read(`media/${MARKDOWN_SCRIPT}`),
   codeScript: await read(`media/${CODE_SCRIPT}`),
+};
+
+/* Every script, by file name. */
+export const scripts: Record<string, string> = {
+  [CODEMIRROR_SCRIPT]: built.codemirrorScript,
+  [MARKDOWN_SCRIPT]: built.markdownScript,
+  [CODE_SCRIPT]: built.codeScript,
 };
 
 /* Anki's rule: a field is empty if it holds only whitespace and <br> / <div> tags. */
@@ -55,7 +64,7 @@ export class Reviewer {
 
   /* missing: scripts that are not in collection.media. */
   constructor({ missing = [] as string[] } = {}) {
-    this.media = { [MARKDOWN_SCRIPT]: built.markdownScript, [CODE_SCRIPT]: built.codeScript };
+    this.media = { ...scripts };
     for (const name of missing) delete this.media[name];
     const dom = new JSDOM('<!doctype html><html><head></head><body class="card"><div id="qa"></div></body></html>', {
       url: "http://127.0.0.1:40000/",
