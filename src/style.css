@@ -22,7 +22,7 @@
     visibility: hidden;
 }
 
-/* fields stay hidden until _code-card.js has rendered them */
+/* fields stay hidden until the card script has rendered them */
 .cc-sep:last-child {
     display: none;
 }

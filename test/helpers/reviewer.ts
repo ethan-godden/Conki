@@ -1,8 +1,8 @@
 /* A stand-in for Anki's reviewer, for testing the built files end to end.
  *
  * It fills the built card templates the way Anki does, puts the result in a
- * page, runs the template's script, and serves dist/media/_code-card.js when
- * the page asks for it. One Reviewer is one Anki session: the page stays
+ * page, runs the template's script, and serves the scripts in dist/media when
+ * the page asks for them. One Reviewer is one Anki session: the page stays
  * between cards and between a card's two sides, as it does in Anki desktop. */
 import { readFile } from "node:fs/promises";
 import { EditorView } from "@codemirror/view";
@@ -11,11 +11,15 @@ import { type DOMWindow, JSDOM, requestInterceptor, VirtualConsole } from "jsdom
 const dist = new URL("../../dist/", import.meta.url);
 const read = (name: string) => readFile(new URL(name, dist), "utf8");
 
+export const MARKDOWN_SCRIPT = "_markdown-card.min.js";
+export const CODE_SCRIPT = "_code-card.min.js";
+
 export const built = {
-  front: await read("front.html"),
-  back: await read("back.html"),
+  code: { front: await read("code/front.html"), back: await read("code/back.html") },
+  markdown: { front: await read("markdown/front.html"), back: await read("markdown/back.html") },
   style: await read("style.css"),
-  script: await read("media/_code-card.js"),
+  markdownScript: await read(`media/${MARKDOWN_SCRIPT}`),
+  codeScript: await read(`media/${CODE_SCRIPT}`),
 };
 
 /* Anki's rule: a field is empty if it holds only whitespace and <br> / <div> tags. */
@@ -41,15 +45,18 @@ function withoutLayout(window: DOMWindow) {
 }
 
 export class Reviewer {
-  scriptAvailable: boolean;
+  /* What collection.media holds, by file name: the built scripts, unless a
+   * test removes or replaces one. */
+  media: Record<string, string>;
   commands: string[] = [];   // what the card sent to Anki with pycmd()
   requests: string[] = [];   // file names the page asked the media server for
   window: DOMWindow;
   document: Document;
 
-  /* scriptAvailable: false behaves as if _code-card.js were not in collection.media. */
-  constructor({ scriptAvailable = true } = {}) {
-    this.scriptAvailable = scriptAvailable;
+  /* missing: scripts that are not in collection.media. */
+  constructor({ missing = [] as string[] } = {}) {
+    this.media = { [MARKDOWN_SCRIPT]: built.markdownScript, [CODE_SCRIPT]: built.codeScript };
+    for (const name of missing) delete this.media[name];
     const dom = new JSDOM('<!doctype html><html><head></head><body class="card"><div id="qa"></div></body></html>', {
       url: "http://127.0.0.1:40000/",
       runScripts: "dangerously",
@@ -60,8 +67,8 @@ export class Reviewer {
         interceptors: [requestInterceptor((request) => {
           const name = decodeURIComponent(new URL(request.url).pathname.slice(1));
           this.requests.push(name);
-          if (name === "_code-card.js" && this.scriptAvailable) {
-            return new Response(built.script, { headers: { "Content-Type": "application/javascript" } });
+          if (Object.hasOwn(this.media, name)) {
+            return new Response(this.media[name], { headers: { "Content-Type": "application/javascript" } });
           }
           return new Response("", { status: 404 });
         })],
@@ -78,7 +85,7 @@ export class Reviewer {
     const { window, document } = this;
     const qa = document.getElementById("qa")!;
     window.onUpdateHook.length = 0;
-    qa.innerHTML = fill(template, { Prompt: "", Answer: "", Back: "", ...fields });
+    qa.innerHTML = fill(template, { Prompt: "", Answer: "", Back: "", Front: "", ...fields });
     for (const old of [...qa.querySelectorAll("script")]) {     // Anki re-creates each script so that it runs
       const script = document.createElement("script");
       script.textContent = old.textContent;
@@ -89,8 +96,13 @@ export class Reviewer {
     return document.getElementById("cc")!;
   }
 
-  question(fields: Record<string, string>) { return this.show(built.front, fields); }
-  answer(fields: Record<string, string>) { return this.show(built.back, fields); }
+  /* A side of a card of the Code note type. */
+  question(fields: Record<string, string>) { return this.show(built.code.front, fields); }
+  answer(fields: Record<string, string>) { return this.show(built.code.back, fields); }
+
+  /* A side of a card of the Markdown note type. */
+  markdownQuestion(fields: Record<string, string>) { return this.show(built.markdown.front, fields); }
+  markdownAnswer(fields: Record<string, string>) { return this.show(built.markdown.back, fields); }
 
   /* The element that is typed into (CodeMirror's content element). */
   get input() { return this.document.getElementById("code-input")!; }

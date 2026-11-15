@@ -1,5 +1,10 @@
-/* Entry point. The card templates load the built script and call
- * CodeCard.render(root) with the card's root element. */
+/* Entry point of _code-card.min.js, which defines window.CodeCard. The card
+ * templates load _markdown-card.min.js, then this, and call
+ * CodeCard.render(root) with the card's root element.
+ *
+ * Only this file and @codemirror/merge's diff are in this script: the other
+ * modules of src it imports, and CodeMirror with them, come from
+ * _markdown-card.min.js (see markdown-card.ts and scripts/build.ts). */
 import {presentableDiff} from "@codemirror/merge";
 import {normalizeCode, squeezeSpacing} from "./code.ts";
 import {CONFIG} from "./config.ts";
@@ -20,6 +25,10 @@ const CodeCard = {render, config: CONFIG, version: __VERSION__};
 window.CodeCard ??= CodeCard;
 
 function render(root: HTMLElement) {
+    const markdownVersion = window.MarkdownCard?.version;
+    if (markdownVersion !== __VERSION__) {
+        throw new Error(`_code-card.min.js is version ${__VERSION__} but _markdown-card.min.js is ${markdownVersion}: copy both into collection.media and restart Anki`);
+    }
     destroyViews();
     if (root.dataset.side === "back") renderBack(root);
     else renderFront(root);

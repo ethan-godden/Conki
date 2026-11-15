@@ -1,10 +1,13 @@
 # anki-code-card
 
-An Anki note type for code. `Prompt` and `Back` are written in Markdown and can hold any number of read-only code blocks. One block per card can be typed, in whole or in part, and is compared with the expected code on the answer side.
+Two Anki note types:
+
+- **Code**: for code. `Prompt` and `Back` are written in Markdown and can hold any number of read-only code blocks. One block per card can be typed, in whole or in part, and is compared with the expected code on the answer side. Fields: `Prompt`, `Answer`, `Back`.
+- **Markdown**: the same Markdown and read-only code blocks, with nothing to type. Fields: `Front`, `Back`.
 
 Code is shown and typed in [CodeMirror 6](https://codemirror.net/), with no language support and no highlight style installed: it is plain text, never coloured.
 
-Fields: `Prompt`, `Answer`, `Back`. Written for and tested on Anki desktop.
+Written for and tested on Anki desktop.
 
 ## Build
 
@@ -15,26 +18,27 @@ Requires Node.js 22.18 or later (it runs the TypeScript build script and tests d
 
 | File | Goes into |
 |---|---|
-| `dist/media/_code-card.js` | the profile's `collection.media` folder |
-| `dist/front.html` | note type > Cards > Front Template |
-| `dist/back.html` | note type > Cards > Back Template |
-| `dist/style.css` | note type > Cards > Styling |
+| `dist/media/_markdown-card.min.js` | the profile's `collection.media` folder (both note types) |
+| `dist/media/_code-card.min.js` | the profile's `collection.media` folder (Code note type) |
+| `dist/code/front.html`, `dist/code/back.html` | Code note type > Cards > Front / Back Template |
+| `dist/markdown/front.html`, `dist/markdown/back.html` | Markdown note type > Cards > Front / Back Template |
+| `dist/style.css` | both note types > Cards > Styling |
+
+`_markdown-card.min.js` holds Markdown rendering and CodeMirror; `_code-card.min.js` holds only what the Code note type adds (the `Answer` field, keeping what was typed, grading and the diff) and is built on it, so the Code templates load both, the markdown one first.
 
 ## Install
 
-1. Copy `dist/media/_code-card.js` into `collection.media` and restart Anki.
-2. Note type > Fields: make sure `Prompt`, `Answer` and `Back` exist.
-3. Note type > Cards: paste the two templates and the Styling.
+1. Copy both scripts from `dist/media` into `collection.media` (`npm run deploy` does this for the profile `User 1`) and restart Anki.
+2. Code note type > Fields: make sure `Prompt`, `Answer` and `Back` exist. Markdown note type (Tools > Manage Note Types > Add, from Basic) > Fields: `Front` and `Back`.
+3. For each note type, Cards: paste its two templates and the Styling.
 
-After a change, only the files that changed need installing again. `_markdown-it.min.js` and `_diff.min.js` from earlier versions are no longer used and can be deleted from `collection.media`.
+After a change, only the files that changed need installing again, except that the two scripts must always come from the same build: a Code card says so if they do not. `_code-card.js`, `_markdown-it.min.js` and `_diff.min.js` from earlier versions are no longer used and can be deleted from `collection.media`. The Code templates changed when the script was split in two; install them again together with both scripts.
 
-The typed answer used to be a plain text box. It is now a CodeMirror editor, which needs `dist/style.css` as well: install the new Styling together with the new `_code-card.js`. The templates did not change.
-
-If you do not want the `Back` field, delete the `{{#Back}}...{{/Back}}` line from `src/templates/back.html`.
+If you do not want the `Back` field, delete the `{{#Back}}...{{/Back}}` line from `src/templates/code/back.html` (or `markdown/back.html`).
 
 ## Writing cards
 
-`Prompt` and `Back` are Markdown. A fenced block is a read-only code block, shown as plain text with no syntax colours, and you can have any number of them:
+`Prompt` and `Back` (in the Markdown note type, `Front` and `Back`) are Markdown. A fenced block is a read-only code block, shown as plain text with no syntax colours, and you can have any number of them:
 
     Some text, `inline code`, then:
 
@@ -43,7 +47,7 @@ If you do not want the `Back` field, delete the `{{#Back}}...{{/Back}}` line fro
         return a + b
     ```
 
-To make code typeable (one block per card):
+To make code typeable (one block per card, Code note type only):
 
 | What is typed | How to mark it | On the card |
 |---|---|---|
@@ -81,9 +85,12 @@ The answer side shows the block again with what you typed compared against what 
 ### Layout
 
     src/                  the script, one TypeScript module per concern
-      index.ts            entry point, defines window.CodeCard; renders both sides, keeps what
-                          is typed for the answer side, and diffs it (presentableDiff from
-                          @codemirror/merge)
+      markdown-card.ts    entry point of _markdown-card.min.js, defines window.MarkdownCard;
+                          renders the Markdown note type, and exposes the modules below
+                          (MarkdownCard.modules) for the code card's script
+      code-card.ts        entry point of _code-card.min.js, defines window.CodeCard; renders
+                          both sides, keeps what is typed for the answer side, and diffs it
+                          (presentableDiff from @codemirror/merge)
       config.ts           options: Tab width, labels, the `type` word, the underline selector,
                           whether spacing counts
       field-text.ts       field HTML to plain text, and which characters were underlined
@@ -92,7 +99,8 @@ The answer side shows the block again with what you typed compared against what 
                           starter code; the Answer field
       markdown.ts         Markdown fields, using markdown-it
       editor.ts           the CodeMirror views: read-only, and the typed block with its gap
-    src/templates/        front.html, back.html, and loader.ts, which is compiled and inlined into both
+    src/templates/        code/ and markdown/, each with front.html and back.html, and loader.ts,
+                          which is compiled and inlined into all four
     src/style.css         the Styling
     scripts/build.ts      the build
     test/                 the tests
@@ -100,14 +108,17 @@ The answer side shows the block again with what you typed compared against what 
 
 ### The build
 
-- esbuild compiles `src` and the libraries it imports (markdown-it and CodeMirror 6) into one plain script: ES2018, minified, ASCII only. Of `@codemirror/merge` only the diff function is kept; the script is about 390 kB, most of it CodeMirror itself.
-- The licence of every npm package whose code ends up in the script is appended to it as a comment.
-- In a template, `<script data-inline src="loader.ts"></script>` is replaced by an inline script with that file compiled to JavaScript, because Anki templates cannot share a file.
-- The first line of `dist/media/_code-card.js` names the version it was built from; `CodeCard.version` holds the same value.
+- esbuild compiles each entry point and what it imports into one plain script: ES2018, minified, ASCII only.
+  - `_markdown-card.min.js` (about 380 kB, most of it CodeMirror itself): `src/markdown-card.ts`, the modules of `src` it exposes, markdown-it and CodeMirror 6.
+  - `_code-card.min.js` (about 12 kB): `src/code-card.ts` and the diff function of `@codemirror/merge`. Its imports of other modules of `src` are pointed at `window.MarkdownCard.modules` rather than bundled, so CodeMirror is on the page once. The build fails if this script would get its own copy of anything the markdown script has.
+- The licence of every npm package whose code ends up in a script is appended to that script as a comment.
+- In a template, `<script data-inline src="../loader.ts"></script>` is replaced by an inline script with that file compiled to JavaScript, because Anki templates cannot share a file. The root's `data-card` (`MarkdownCard` or `CodeCard`) says which scripts to load and which object renders the card.
+- The first line of each script names the version it was built from; `MarkdownCard.version` and `CodeCard.version` hold the same value, and a Code card refuses to render if they differ.
 
 ### Common changes
 
-- Options: `src/config.ts`.
+- Options: `src/config.ts` (shared by both note types).
+- A new module of `src` that `code-card.ts` imports must also be added to `modules` in `src/markdown-card.ts`.
 - Colours and spacing: `src/style.css`.
 - Updating markdown-it or CodeMirror: `npm update`, then `npm test`. Versions are pinned in `package-lock.json`.
 - Adding a CodeMirror extension (line numbers, bracket matching, a language) is a change in `src/editor.ts`. Colours would also need a highlight style, which is left out on purpose.

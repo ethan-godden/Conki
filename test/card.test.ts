@@ -1,8 +1,8 @@
 /* Whole cards, through the built templates and the built script, in a stand-in
- * for Anki's reviewer (see helpers/reviewer.js). */
+ * for Anki's reviewer (see helpers/reviewer.ts). */
 import assert from "node:assert/strict";
 import test from "node:test";
-import { Reviewer, shown } from "./helpers/reviewer.ts";
+import { built, CODE_SCRIPT, MARKDOWN_SCRIPT, Reviewer, shown } from "./helpers/reviewer.ts";
 import type { EditorView } from "@codemirror/view";
 
 /* A fenced block the way it is typed into a field: lines separated by <br>. */
@@ -440,26 +440,35 @@ session("starter code in the Answer field", async (anki) => {
   assert.deepEqual([view.labels, view.missed], [["You typed", "Expected"], ["+"]]);
 });
 
-session("the script is fetched once per session", async (anki) => {
+session("the scripts are fetched once per session, the markdown one first", async (anki) => {
   await anki.question(ADD);
   await anki.answer(ADD);
   await anki.question(TYPED);
   await anki.answer(TYPED);
-  assert.deepEqual(anki.requests, ["_code-card.js"]);
+  assert.deepEqual(anki.requests, [MARKDOWN_SCRIPT, CODE_SCRIPT]);
 });
 
-session("script missing from collection.media: the card says so, shows the raw fields, and recovers", async (anki) => {
-  let card = await anki.question(ADD);
-  assert.equal(shown(card).error, "Code card: _code-card.js is missing from collection.media");
-  assert.equal(card.classList.contains("cc-raw"), false);
-  assert.ok(card.textContent.includes("Write a function add."));
-  assert.equal(card.querySelector<HTMLElement>('[data-part="answer"]')!.hidden, true, "the answer stays hidden even then");
+for (const missing of [MARKDOWN_SCRIPT, CODE_SCRIPT]) {
+  session(`${missing} missing from collection.media: the card says so, shows the raw fields, and recovers`, async (anki) => {
+    let card = await anki.question(ADD);
+    assert.equal(shown(card).error, `Code card: ${missing} is missing from collection.media`);
+    assert.equal(card.classList.contains("cc-raw"), false);
+    assert.ok(card.textContent.includes("Write a function add."));
+    assert.equal(card.querySelector<HTMLElement>('[data-part="answer"]')!.hidden, true, "the answer stays hidden even then");
 
-  anki.scriptAvailable = true;
-  card = await anki.question(ADD);
-  assert.equal(shown(card).error, null);
-  assert.equal(typeable(card).length, 1);
-}, { scriptAvailable: false });
+    anki.media[missing] = missing === MARKDOWN_SCRIPT ? built.markdownScript : built.codeScript;
+    card = await anki.question(ADD);
+    assert.equal(shown(card).error, null);
+    assert.equal(typeable(card).length, 1);
+  }, { missing: [missing] });
+}
+
+session("scripts from different versions: the card says to copy both", async (anki) => {
+  anki.media[MARKDOWN_SCRIPT] = built.markdownScript.replace(/(config:\w+,version:)"[^"]+"(,modules:)/, '$1"0.9.0"$2');
+  assert.notEqual(anki.media[MARKDOWN_SCRIPT], built.markdownScript);
+  const card = await anki.question(ADD);
+  assert.match(shown(card).error!, /^Code card: _code-card\.min\.js is version \S+ but _markdown-card\.min\.js is 0\.9\.0: copy both/);
+});
 
 session("an error while rendering is shown on the card instead of leaving it blank", async (anki) => {
   await anki.question(ADD);
@@ -468,3 +477,54 @@ session("an error while rendering is shown on the card instead of leaving it bla
   assert.equal(shown(card).error, "Code card: boom");
   assert.equal(card.classList.contains("cc-raw"), false);
 });
+
+/* ---- the Markdown note type ---- */
+
+const NOTE = { Front: "What does <b>add</b> return?", Back: "The sum:<br>" + fence("python", "def add(a, b):", "&nbsp; &nbsp; return a + b") };
+
+session("Markdown note: the front is Markdown, and only the markdown script is fetched", async (anki) => {
+  const card = await anki.markdownQuestion({ Front: "Some *text* and `code`.<br>" + fence("python", "x = 1") });
+  assert.equal(card.classList.contains("cc-raw"), false, "the card is revealed once rendered");
+  assert.equal(card.querySelector(".prompt p")!.innerHTML, "Some <em>text</em> and <code>code</code>.");
+  assert.deepEqual(shown(card).blocks, ["x = 1"]);
+  assert.equal(typeable(card).length, 0);
+  assert.equal(shown(card).error, null);
+  assert.deepEqual(anki.requests, [MARKDOWN_SCRIPT]);
+  assert.equal(anki.window.CodeCard, undefined);
+});
+
+session("Markdown note: the back shows the front, then the Back field, both read-only", async (anki) => {
+  await anki.markdownQuestion(NOTE);
+  const card = await anki.markdownAnswer(NOTE);
+  const view = shown(card);
+  assert.deepEqual(view.blocks, [ADD_CODE]);
+  assert.deepEqual(view.labels, []);
+  assert.equal(typeable(card).length, 0);
+  assert.ok(card.querySelector(".prompt")!.textContent!.includes("What does add return?"));
+  assert.equal(card.querySelector("#answer")!.tagName, "HR", "Anki scrolls to the divider");
+});
+
+session("Markdown note: nothing is typed, even for a block marked `type` or underlined", async (anki) => {
+  const fields = { Front: fence("python type", "x = 1") + "<br>" + fence("python", "<u>y = 2</u>"), Back: "" };
+  let card = await anki.markdownQuestion(fields);
+  assert.equal(typeable(card).length, 0);
+  assert.deepEqual(shown(card).blocks, ["x = 1", "y = 2"]);
+  card = await anki.markdownAnswer(fields);
+  assert.deepEqual(shown(card).labels, []);
+  assert.deepEqual(shown(card).blocks, ["x = 1", "y = 2"]);
+});
+
+session("Markdown and Code notes in one session share the markdown script", async (anki) => {
+  await anki.markdownQuestion(NOTE);
+  await anki.question(ADD);
+  anki.type(ADD_CODE);
+  assert.deepEqual(shown(await anki.answer(ADD)).labels, ["Correct"]);
+  await anki.markdownAnswer(NOTE);
+  assert.deepEqual(anki.requests, [MARKDOWN_SCRIPT, CODE_SCRIPT]);
+});
+
+session("Markdown note: a missing script is shown on the card", async (anki) => {
+  const card = await anki.markdownQuestion(NOTE);
+  assert.equal(shown(card).error, `Markdown card: ${MARKDOWN_SCRIPT} is missing from collection.media`);
+  assert.equal(card.classList.contains("cc-raw"), false);
+}, { missing: [MARKDOWN_SCRIPT] });

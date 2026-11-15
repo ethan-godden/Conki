@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.ts",
-    "deploy": "npm run build && cp dist/media/_code-card.js \"$HOME/Library/Application Support/Anki2/User 1/collection.media/\"",
+    "deploy": "npm run build && cp dist/media/_markdown-card.min.js dist/media/_code-card.min.js \"$HOME/Library/Application Support/Anki2/User 1/collection.media/\"",
     "pretest": "tsc && npm run build",
     "test": "node --test \"test/*.test.ts\"",
     "typecheck": "tsc"
