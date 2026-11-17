@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/build.ts",
+    "clean": "media=\"$HOME/Library/Application Support/Anki2/User 1/collection.media\"; rm -rf dist && rm -f \"$media/_codemirror.min.js\" \"$media/_markdown-card.min.js\" \"$media/_code-card.min.js\"",
     "deploy": "npm run build && cp dist/media/*.min.js \"$HOME/Library/Application Support/Anki2/User 1/collection.media/\"",
     "pretest": "tsc && npm run build",
     "test": "node --test \"test/*.test.ts\"",

@@ -73,6 +73,8 @@ The answer side shows what you typed compared against what was expected. A wrong
     npm test            type-check, build, then run every test
     npm run build       build only
     npm run typecheck   type-check only (tsc; nothing is emitted)
+    npm run deploy      build, then copy the three scripts into collection.media of the profile `User 1`
+    npm run clean       delete dist, and the three scripts from that collection.media
 
 ### Layout
 
