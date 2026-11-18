@@ -111,6 +111,11 @@
 
 /* spacing that differs, where it does not count */
 
+/* ---- left-justified text: the Code note's Prompt and the Markdown note's fields ---- */
+[data-part="prompt"], .md {
+    text-align: left;
+}
+
 /* ---- Markdown fields (Markdown note type) ---- */
 .md p {
     margin: 0.5em 0;
@@ -126,7 +131,7 @@
 
 .md ul, .md ol {
     display: table;
-    margin: 0.5em auto;
+    margin: 0.5em 0;
     text-align: left;
 }
 
@@ -138,7 +143,7 @@
 }
 
 .md table {
-    margin: 0.5em auto;
+    margin: 0.5em 0;
     border-collapse: collapse;
 }
 
