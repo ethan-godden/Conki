@@ -97,6 +97,8 @@ The answer side shows what you typed compared against what was expected. A wrong
                           which is compiled and inlined into all four
     src/style.css         the Styling
     scripts/build.ts      the build
+    scripts/deploy.sh     npm run deploy
+    scripts/clean.sh      npm run clean
     test/                 the tests
     tsconfig.json         type checking for all of the above
 
