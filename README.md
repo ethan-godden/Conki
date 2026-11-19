@@ -1,4 +1,4 @@
-# anki-code-card
+# Conki
 
 Two Anki note types:
 
